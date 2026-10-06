@@ -1,0 +1,181 @@
+name: Release
+
+# Publishing a GitHub Release builds RepoDock for Windows and macOS and
+# attaches the binaries, a SHA256SUMS.txt and a download table to it.
+# "Run workflow" (workflow_dispatch) produces the same files as workflow
+# artifacts only, without touching any release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+env:
+  WAILS_VERSION: v2.15.0
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            platform: windows/amd64
+            target: windows-amd64
+          - label: macOS universal
+            os: macos-latest
+            platform: darwin/universal
+            target: macos-universal
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+          else
+            tag="dev-${GITHUB_SHA::7}"
+          fi
+          # Windows file versions must be numeric: v1.2.3-beta.1 -> 1.2.3
+          numeric="$(echo "${tag#v}" | grep -oE '^[0-9]+(\.[0-9]+){0,2}' || true)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "numeric=${numeric:-0.0.0}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}"
+
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+
+      - name: Stamp version into wails.json
+        run: |
+          node -e '
+            const fs = require("fs")
+            const config = JSON.parse(fs.readFileSync("wails.json", "utf8"))
+            config.info.productVersion = process.argv[1]
+            fs.writeFileSync("wails.json", JSON.stringify(config, null, 2) + "\n")
+          ' "${{ steps.version.outputs.numeric }}"
+
+      - name: Build
+        run: |
+          flags=(-clean -platform "${{ matrix.platform }}" -trimpath -ldflags "-s -w")
+          if [ "$RUNNER_OS" = "Windows" ]; then flags+=(-nsis); fi
+          wails build "${flags[@]}"
+          ls -la build/bin
+
+      - name: Test
+        run: go test ./...
+
+      - name: Package
+        id: package
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p dist
+          base="RepoDock-${TAG}-${TARGET}"
+          shopt -s nullglob
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            installers=(build/bin/*installer*.exe)
+            [ -f build/bin/repodock.exe ] && [ ${#installers[@]} -eq 1 ] || { echo "unexpected build output"; exit 1; }
+            installer="${installers[0]}"
+            cp build/bin/repodock.exe dist/repodock.exe
+            (cd dist && 7z a -tzip "${base}.zip" repodock.exe > /dev/null && rm repodock.exe)
+            cp "$installer" "dist/${base}-installer.exe"
+          else
+            apps=(build/bin/*.app)
+            [ ${#apps[@]} -eq 1 ] || { echo "expected one .app bundle"; exit 1; }
+            app="${apps[0]}"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "dist/${base}.zip"
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release assets
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Add download links to the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          {
+            echo
+            echo "<!-- repodock-downloads -->"
+            echo "## Downloads"
+            echo
+            echo "| Platform | File |"
+            echo "|---|---|"
+            for f in dist/*; do
+              name="$(basename "$f")"
+              case "$name" in
+                *windows*installer*) platform="Windows x64 — installer" ;;
+                *windows*)           platform="Windows x64 — portable (zip)" ;;
+                *macos*)             platform="macOS (Apple Silicon + Intel)" ;;
+                SHA256SUMS.txt)      platform="Checksums" ;;
+                *)                   platform="Other" ;;
+              esac
+              echo "| ${platform} | [${name}](${base}/${name}) |"
+            done
+            echo
+            echo "Builds are not code-signed yet. Windows SmartScreen: *More info → Run anyway*. macOS: right-click the app → *Open*, or run \`xattr -dr com.apple.quarantine /Applications/RepoDock.app\`."
+          } > downloads.md
+
+          # Replace a previous table (re-runs) instead of appending twice.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+            | sed '/<!-- repodock-downloads -->/,$d' > notes.md
+          cat downloads.md >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md

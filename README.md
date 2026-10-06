@@ -1,8 +1,22 @@
 # RepoDock
 
+[![Latest release](https://img.shields.io/github/v/release/petter-ka/repodock?label=download)](https://github.com/petter-ka/repodock/releases/latest)
+[![CI](https://github.com/petter-ka/repodock/actions/workflows/ci.yml/badge.svg)](https://github.com/petter-ka/repodock/actions/workflows/ci.yml)
+
 Native multiplatform developer command center for local Node.js repositories.
 
 RepoDock is designed for teams who have many Node.js / React / Next.js / NestJS repositories and want a fast native UI for starting, stopping, grouping and observing repository commands without opening each project individually.
+
+## Download
+
+Get the latest build from the **[Releases page](https://github.com/petter-ka/repodock/releases/latest)**:
+
+| Platform | File |
+|---|---|
+| Windows 10/11 x64 | `RepoDock-<version>-windows-amd64-installer.exe` (installer) or `…-windows-amd64.zip` (portable) |
+| macOS (Apple Silicon and Intel) | `RepoDock-<version>-macos-universal.zip` — unzip and move `RepoDock.app` to Applications |
+
+Builds are not code-signed yet. On Windows, SmartScreen may ask you to confirm (*More info → Run anyway*). On macOS, right-click the app and choose *Open* the first time, or run `xattr -dr com.apple.quarantine /Applications/RepoDock.app`. Verify downloads against `SHA256SUMS.txt`.
 
 ## Goals
 

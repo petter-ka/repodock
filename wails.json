@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "repodock",
+  "name": "RepoDock",
   "outputfilename": "repodock",
   "frontend:dir": "frontend",
   "frontend:install": "npm install",
@@ -10,5 +10,12 @@
   "author": {
     "name": "RepoDock Contributors",
     "email": ""
+  },
+  "info": {
+    "companyName": "RepoDock",
+    "productName": "RepoDock",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © RepoDock Contributors",
+    "comments": "Local repository command center"
   }
 }

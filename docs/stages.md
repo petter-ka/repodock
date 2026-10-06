@@ -9,7 +9,7 @@
 | 2 Process Center | Done | Batched streaming, tree stats, stop/restart/stop-all, retention |
 | 3 Command Plans | Done | Backend-owned sequences (ADR-0009), background and no-op steps, group runs sequential/parallel (ADR-0010) |
 | 4 Environment Workspace | Done | Atomic writes, masked-by-default view, unsaved-change guards |
-| 5 Hardening | Partial | Tree kill per OS and corrupt-workspace recovery done; packaging/signing, accessibility audit and telemetry decision open |
+| 5 Hardening | Partial | Tree kill per OS, corrupt-workspace recovery, and Windows/macOS release builds on GitHub Releases done; code signing, Linux packaging, accessibility audit and telemetry decision open |
 | 6 Extensibility | Ready | Module registry in place; no extra modules yet |
 
 Open items: the 10-simultaneous-process exit criterion has been exercised with simulated output only; macOS/Linux packaging and real-device smoke tests are still required; OS keychain integration is future work.
