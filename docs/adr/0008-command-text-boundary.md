@@ -17,7 +17,7 @@ On Windows, Go's default argument escaping follows MSVCRT rules, which `cmd.exe`
   - Windows: `cmd.exe` has no reliable quoting for arbitrary data, so arguments outside a conservative character set are **rejected** with a message suggesting a custom command.
 - On Windows the shell command line is passed raw via `SysProcAttr.CmdLine` (`cmd.exe /d /s /c "<text>"`).
 - Command text must be a single line without NUL bytes.
-- Unix uses the user's login shell (`$SHELL -l -c`, falling back to `/bin/sh`) so PATH entries from profiles (nvm, volta, Homebrew) work for GUI launches.
+- Unix uses the user's login shell (`$SHELL -l -c`, falling back to `/bin/sh`). Because a login shell does not read `~/.zshrc`/`~/.bashrc`, the PATH of an interactive login shell is resolved once at startup and passed to every child (see `architecture/process-model.md`, "PATH on macOS and Linux"). Commands still run non-interactively.
 
 ## Alternatives considered
 

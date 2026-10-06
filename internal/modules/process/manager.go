@@ -85,6 +85,7 @@ func New(opts Options) *Manager {
 	m := &Manager{opts: opts, runs: map[string]*trackedRun{}, snapshots: map[string]domain.ProcessSnapshot{}}
 	m.output = newBatcher(opts.OutputInterval, 500, func(lines []domain.ProcessOutput) { m.emit(EventOutputBatch, lines) })
 	m.stats = newStatsSampler(m, opts.StatsInterval)
+	platform.WarmEnvironment()
 	return m
 }
 
@@ -174,11 +175,12 @@ func commandText(spec Spec) (string, error) {
 	return text, nil
 }
 
-// childEnv inherits the host environment and asks common Node tooling to
-// keep colors even though output is not a TTY. Env-file values are never
-// injected implicitly (see process-model.md).
+// childEnv inherits the host environment, extends PATH with the user's
+// shell PATH on macOS/Linux (GUI launches lack it), and asks common Node
+// tooling to keep colors even though output is not a TTY. Env-file values
+// are never injected implicitly (see process-model.md).
 func childEnv() []string {
-	env := os.Environ()
+	env := platform.ChildEnvironment(os.Environ())
 	if _, ok := os.LookupEnv("FORCE_COLOR"); !ok {
 		env = append(env, "FORCE_COLOR=1")
 	}

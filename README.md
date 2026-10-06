@@ -16,6 +16,8 @@ Get the latest build from the **[Releases page](https://github.com/petter-ka/rep
 | Windows 10/11 x64 | `RepoDock-<version>-windows-amd64-installer.exe` (installer) or `…-windows-amd64.zip` (portable) |
 | macOS (Apple Silicon and Intel) | `RepoDock-<version>-macos-universal.zip` — unzip and move `RepoDock.app` to Applications |
 
+**macOS/Linux: `command not found: npm`?** RepoDock reads the PATH of your interactive shell (including `~/.zshrc`, where nvm/fnm usually live) when it starts. Restart RepoDock after installing Node or a version manager. If your shell profile takes longer than 8 seconds to load, RepoDock falls back to common install folders (Homebrew, volta, nvm, …).
+
 Builds are not code-signed yet. On Windows, SmartScreen may ask you to confirm (*More info → Run anyway*). On macOS, right-click the app and choose *Open* the first time, or run `xattr -dr com.apple.quarantine /Applications/RepoDock.app`. Verify downloads against `SHA256SUMS.txt`.
 
 ## Goals

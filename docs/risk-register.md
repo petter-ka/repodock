@@ -7,6 +7,7 @@
 | R-003 | `.env` values are exposed in logs or diagnostics | High | Medium | Secret-handling policy, redaction, no raw env logging | Environment module |
 | R-004 | Workspace schema changes break existing installs | High | Medium | Versioned JSON, migration layer before schema changes | Workspace module |
 | R-005 | Windows shell semantics differ from Unix shells | High | High | Platform runner abstraction and OS-specific tests | Process module |
+| R-010 | GUI launches on macOS/Linux lack the terminal PATH (`command not found: npm`) | High | High | Resolve the interactive login shell PATH once at startup, plus fallback tool folders; covered by a real-zsh test | Process module |
 | R-006 | Long-lived process table grows without bounds | Medium | Medium | Define bounded history/retention policy before production release | Process module |
 | R-007 | User command injection through future remote/import features | High | Medium | File import (ADR-0011): preview with visible commands, imported steps disabled by default, nothing executed, strict validation. Remote/URL import still requires a new review | Product |
 | R-008 | A module bypasses shared contracts and couples the app shell | Medium | Medium | Dependency rules and module contract docs | Architecture |

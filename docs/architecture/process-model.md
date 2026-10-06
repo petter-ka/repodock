@@ -37,6 +37,14 @@ func ParentMap() (map[int32]int32, error)            // one process-table scan p
 
 Child processes inherit the host environment plus `FORCE_COLOR=1` (unless already set) so Node tooling keeps colors; the console renders ANSI SGR codes and strips other escape sequences.
 
+### PATH on macOS and Linux
+
+Apps launched from Finder, the Dock or a desktop launcher do not inherit a terminal's PATH, and a login shell (`zsh -l`) does not read `~/.zshrc`, where nvm, fnm, asdf and similar tools usually add `node`/`npm`. Without help, commands fail with `zsh:1: command not found: npm`.
+
+At startup the process module resolves the PATH of the user's **interactive login shell** once, in the background (`$SHELL -i -l -c`, stdin closed, 8 s timeout, PATH extracted between markers so profile banners are ignored). Every child process gets `PATH = <shell PATH> + <inherited PATH> + <existing well-known tool folders>` (Homebrew, MacPorts, volta, bun, pnpm, asdf, mise, nodenv, newest nvm version), de-duplicated. If resolution fails or times out, the fallback folders still apply and a warning is logged. Windows GUI apps already inherit the user PATH, so this is a no-op there.
+
+The PATH is resolved once per app launch: after installing a new Node version manager, restart RepoDock.
+
 ## Output
 
 Output is line-oriented. Stdout/stderr are captured through writers (not pipes read concurrently with `Wait`), split on `
