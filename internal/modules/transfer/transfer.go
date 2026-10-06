@@ -1,0 +1,322 @@
+// Package transfer exports groups and repository registrations to a
+// portable JSON document and merges such documents back into a workspace
+// (ADR-0011). Building, parsing and merging are pure; file I/O is limited
+// to file.go. Nothing is executed, and env file contents are never part of
+// the document.
+package transfer
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/example/repodock/internal/domain"
+	"github.com/google/uuid"
+)
+
+const (
+	// Format identifies RepoDock export documents.
+	Format = "repodock.workspace-export"
+	// Version is the current export document version.
+	Version = 1
+	// MaxDocumentSize bounds import files.
+	MaxDocumentSize = 4 << 20
+	maxNameLength   = 200
+	maxSteps        = 200
+)
+
+// Document is the on-disk export format. Field names are part of the file
+// contract; change them only with a version bump.
+type Document struct {
+	Format     string          `json:"format"`
+	Version    int             `json:"version"`
+	ExportedAt time.Time       `json:"exportedAt"`
+	Groups     []DocumentGroup `json:"groups"`
+}
+
+type DocumentGroup struct {
+	Name         string               `json:"name"`
+	RunMode      domain.GroupRunMode  `json:"runMode"`
+	Collapsed    bool                 `json:"collapsed"`
+	Repositories []DocumentRepository `json:"repositories"`
+}
+
+type DocumentRepository struct {
+	Name string `json:"name"`
+	// Path uses forward slashes; a leading "~/" means the user's home folder.
+	Path            string               `json:"path"`
+	CommandSequence []domain.CommandStep `json:"commandSequence"`
+}
+
+// Build exports the given groups (all when groupIDs is empty).
+func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (Document, error) {
+	wanted := map[string]bool{}
+	for _, id := range groupIDs {
+		wanted[id] = true
+	}
+	repos := make(map[string]domain.Repository, len(ws.Repositories))
+	for _, repo := range ws.Repositories {
+		repos[repo.ID] = repo
+	}
+
+	doc := Document{Format: Format, Version: Version, ExportedAt: now.UTC(), Groups: []DocumentGroup{}}
+	for _, group := range ws.Groups {
+		if len(wanted) > 0 && !wanted[group.ID] {
+			continue
+		}
+		out := DocumentGroup{Name: group.Name, RunMode: group.RunMode, Collapsed: group.Collapsed, Repositories: []DocumentRepository{}}
+		for _, id := range group.RepositoryIDs {
+			repo, ok := repos[id]
+			if !ok {
+				continue
+			}
+			steps := append([]domain.CommandStep{}, repo.CommandSequence...)
+			if repo.CommandSequence == nil {
+				steps = nil
+			}
+			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Path: portablePath(repo.Path, home), CommandSequence: steps})
+		}
+		doc.Groups = append(doc.Groups, out)
+	}
+	if len(wanted) > 0 && len(doc.Groups) != len(wanted) {
+		return Document{}, fmt.Errorf("one or more groups to export were not found")
+	}
+	return doc, nil
+}
+
+// Encode renders a document as indented JSON with a trailing newline.
+func Encode(doc Document) ([]byte, error) {
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode export: %w", err)
+	}
+	return append(data, '\n'), nil
+}
+
+// Parse decodes and validates an export document. Unknown fields are
+// rejected so typos and foreign files fail loudly instead of half-importing.
+func Parse(data []byte) (Document, error) {
+	var doc Document
+	if len(data) > MaxDocumentSize {
+		return doc, fmt.Errorf("file is larger than %d bytes", MaxDocumentSize)
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&doc); err != nil {
+		return doc, fmt.Errorf("not a valid RepoDock export: %w", err)
+	}
+	if doc.Format != Format {
+		return doc, fmt.Errorf("not a RepoDock export (format %q)", doc.Format)
+	}
+	if doc.Version < 1 || doc.Version > Version {
+		return doc, fmt.Errorf("export version %d is not supported (this RepoDock reads version %d)", doc.Version, Version)
+	}
+	for gi, group := range doc.Groups {
+		if err := validName(group.Name); err != nil {
+			return doc, fmt.Errorf("group %d: %w", gi+1, err)
+		}
+		if group.RunMode != "" && !group.RunMode.Valid() {
+			return doc, fmt.Errorf("group %q: unknown run mode %q", group.Name, group.RunMode)
+		}
+		for ri, repo := range group.Repositories {
+			where := fmt.Sprintf("group %q, repository %d", group.Name, ri+1)
+			if strings.TrimSpace(repo.Path) == "" {
+				return doc, fmt.Errorf("%s: path is empty", where)
+			}
+			if len(repo.CommandSequence) > maxSteps {
+				return doc, fmt.Errorf("%s: more than %d steps", where, maxSteps)
+			}
+			for _, step := range repo.CommandSequence {
+				for _, text := range []string{step.Label, step.Script, step.Command} {
+					if strings.ContainsAny(text, "\r\n\x00") {
+						return doc, fmt.Errorf("%s: step %q contains line breaks or NUL bytes", where, step.Label)
+					}
+				}
+			}
+		}
+	}
+	return doc, nil
+}
+
+func validName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is empty")
+	}
+	if len(name) > maxNameLength {
+		return fmt.Errorf("name is longer than %d characters", maxNameLength)
+	}
+	return nil
+}
+
+// Environment abstracts the checks Plan needs, so tests stay hermetic.
+type Environment struct {
+	Home string
+	// DirExists reports whether an absolute path is an existing folder.
+	DirExists func(path string) bool
+	// SamePath compares paths with platform semantics.
+	SamePath func(a, b string) bool
+}
+
+// Plan describes what Merge would do, for the confirmation dialog.
+func Plan(doc Document, current domain.Workspace, env Environment) domain.ImportPreview {
+	preview := domain.ImportPreview{ExportedAt: doc.ExportedAt, Groups: []domain.ImportGroupPreview{}}
+	seen := []string{}
+	for _, group := range doc.Groups {
+		g := domain.ImportGroupPreview{Name: strings.TrimSpace(group.Name), Repositories: []domain.ImportRepositoryPreview{}}
+		g.Exists = findGroup(current, g.Name) != nil
+		if !g.Exists {
+			preview.GroupsToCreate++
+		}
+		for _, repo := range group.Repositories {
+			path := LocalPath(repo.Path, env.Home)
+			r := domain.ImportRepositoryPreview{Name: repo.Name, Path: path, Steps: sanitizeSteps(repo.CommandSequence, true)}
+			switch {
+			case containsPath(seen, path, env.SamePath):
+				r.Status = domain.ImportDuplicate
+			case findRepoByPath(current, path, env.SamePath) != nil:
+				r.Status = domain.ImportExisting
+				preview.Existing++
+			case !env.DirExists(path):
+				r.Status = domain.ImportMissing
+				preview.New++
+				preview.Missing++
+			default:
+				r.Status = domain.ImportNew
+				preview.New++
+			}
+			if r.Status == domain.ImportNew || r.Status == domain.ImportMissing {
+				for _, step := range r.Steps {
+					if step.Script == "" && step.Command != "" {
+						preview.ShellCommands++
+					}
+				}
+			}
+			seen = append(seen, path)
+			g.Repositories = append(g.Repositories, r)
+		}
+		preview.Groups = append(preview.Groups, g)
+	}
+	return preview
+}
+
+// Merge adds the document's groups and repositories to current without
+// changing anything that already exists: groups are matched by name
+// (case-insensitively), repositories by path. It returns the new workspace
+// and the IDs of added repositories, which the caller should refresh.
+func Merge(doc Document, current domain.Workspace, env Environment, opts domain.ImportOptions) (domain.Workspace, []string, domain.ImportResult) {
+	ws := current
+	ws.Groups = append([]domain.Group{}, current.Groups...)
+	ws.Repositories = append([]domain.Repository{}, current.Repositories...)
+	result := domain.ImportResult{}
+	added := []string{}
+
+	for _, group := range doc.Groups {
+		name := strings.TrimSpace(group.Name)
+		target := findGroup(ws, name)
+		if target == nil {
+			mode := group.RunMode
+			if !mode.Valid() {
+				mode = domain.GroupRunSequential
+			}
+			ws.Groups = append(ws.Groups, domain.Group{ID: uuid.NewString(), Name: name, RunMode: mode, Collapsed: group.Collapsed, RepositoryIDs: []string{}})
+			target = &ws.Groups[len(ws.Groups)-1]
+			result.GroupsCreated++
+		}
+		for _, repo := range group.Repositories {
+			path := LocalPath(repo.Path, env.Home)
+			if findRepoByPath(ws, path, env.SamePath) != nil {
+				result.RepositoriesSkipped++
+				continue
+			}
+			record := domain.Repository{
+				ID: uuid.NewString(), Name: strings.TrimSpace(repo.Name), Path: path, GroupID: target.ID,
+				Scripts: []domain.Script{}, EnvFiles: []string{},
+				CommandSequence: sanitizeSteps(repo.CommandSequence, opts.KeepStepsEnabled),
+			}
+			if record.Name == "" {
+				record.Name = filepath.Base(path)
+			}
+			ws.Repositories = append(ws.Repositories, record)
+			target.RepositoryIDs = append(target.RepositoryIDs, record.ID)
+			added = append(added, record.ID)
+			result.RepositoriesAdded++
+		}
+	}
+	return ws, added, result
+}
+
+// sanitizeSteps copies steps with fresh IDs. Unless keepEnabled is set,
+// every imported step is disabled so nothing runs until the user reviews it.
+func sanitizeSteps(steps []domain.CommandStep, keepEnabled bool) []domain.CommandStep {
+	if steps == nil {
+		return nil
+	}
+	out := make([]domain.CommandStep, 0, len(steps))
+	for _, step := range steps {
+		step.ID = uuid.NewString()
+		step.Label = strings.TrimSpace(step.Label)
+		step.Script = strings.TrimSpace(step.Script)
+		step.Command = strings.TrimSpace(step.Command)
+		if !keepEnabled {
+			step.Enabled = false
+		}
+		out = append(out, step)
+	}
+	return out
+}
+
+// portablePath rewrites paths under home as "~/…" with forward slashes.
+func portablePath(path, home string) string {
+	if home != "" {
+		if rel, err := filepath.Rel(home, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			if rel == "." {
+				return "~"
+			}
+			return "~/" + filepath.ToSlash(rel)
+		}
+	}
+	return filepath.ToSlash(path)
+}
+
+// LocalPath expands "~/" and converts to the platform separator.
+func LocalPath(path, home string) string {
+	path = strings.TrimSpace(path)
+	if path == "~" {
+		return filepath.Clean(home)
+	}
+	if strings.HasPrefix(path, "~/") && home != "" {
+		return filepath.Join(home, filepath.FromSlash(path[2:]))
+	}
+	return filepath.Clean(filepath.FromSlash(path))
+}
+
+func findGroup(ws domain.Workspace, name string) *domain.Group {
+	for i := range ws.Groups {
+		if strings.EqualFold(strings.TrimSpace(ws.Groups[i].Name), name) {
+			return &ws.Groups[i]
+		}
+	}
+	return nil
+}
+
+func findRepoByPath(ws domain.Workspace, path string, same func(a, b string) bool) *domain.Repository {
+	for i := range ws.Repositories {
+		if same(ws.Repositories[i].Path, path) {
+			return &ws.Repositories[i]
+		}
+	}
+	return nil
+}
+
+func containsPath(paths []string, path string, same func(a, b string) bool) bool {
+	for _, p := range paths {
+		if same(p, path) {
+			return true
+		}
+	}
+	return false
+}

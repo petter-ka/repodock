@@ -1,0 +1,45 @@
+import { getBackend } from "@/lib/bridge"
+import type { EventMap } from "@/lib/contracts"
+import type { CommandStep, GroupRunMode, ImportOptions } from "./domain"
+
+const api = () => getBackend().api
+
+/** Repository-manager view of the backend contract. */
+export const repositoryApi = {
+  startupReport: () => api().StartupReport(),
+  workspace: () => api().Workspace(),
+  browse: () => api().BrowseRepository(),
+  addRepository: (path: string, groupID = "") => api().AddRepository(path, groupID),
+  refreshRepository: (id: string) => api().RefreshRepository(id),
+  refreshAll: () => api().RefreshAll(),
+  removeRepository: (id: string) => api().RemoveRepository(id),
+  createGroup: (name: string) => api().CreateGroup(name),
+  renameGroup: (id: string, name: string) => api().RenameGroup(id, name),
+  deleteGroup: (id: string) => api().DeleteGroup(id),
+  setGroupCollapsed: (id: string, collapsed: boolean) => api().SetGroupCollapsed(id, collapsed),
+  assignRepository: (id: string, groupID: string) => api().AssignRepository(id, groupID),
+  setGroupRunMode: (id: string, mode: GroupRunMode) => api().SetGroupRunMode(id, mode),
+  runGroup: (groupID: string) => api().RunGroup(groupID),
+  stopGroup: (groupID: string) => api().StopGroup(groupID),
+  groupRuns: () => api().GroupRuns(),
+  exportWorkspace: (groupIDs: string[] = []) => api().ExportWorkspace(groupIDs),
+  chooseImportFile: () => api().ChooseImportFile(),
+  previewImport: (path: string) => api().PreviewImport(path),
+  applyImport: (path: string, options: ImportOptions) => api().ApplyImport(path, options),
+  saveCommandSequence: (repoID: string, steps: CommandStep[]) => api().SaveCommandSequence(repoID, steps),
+  runScript: (repoID: string, scriptName: string) => api().RunScript(repoID, scriptName, scriptName),
+  runCommand: (repoID: string, command: string, label = "") => api().RunCommand(repoID, command, label),
+  stopProcess: (runID: string) => api().StopProcess(runID),
+  restartProcess: (runID: string) => api().RestartProcess(runID),
+  stopRepository: (repoID: string) => api().StopRepository(repoID),
+  runs: () => api().Runs(),
+  snapshots: () => api().ProcessSnapshots(),
+  runSequence: (repoID: string) => api().RunSequence(repoID),
+  cancelSequence: (sequenceID: string) => api().CancelSequence(sequenceID),
+  sequences: () => api().Sequences(),
+  environmentFiles: (repoID: string) => api().EnvironmentFiles(repoID),
+  readEnvironmentFile: (repoID: string, name: string) => api().ReadEnvironmentFile(repoID, name),
+  saveEnvironmentFile: (repoID: string, name: string, content: string) => api().SaveEnvironmentFile(repoID, name, content),
+  on: <K extends keyof EventMap>(event: K, callback: (payload: EventMap[K]) => void) => getBackend().on(event, callback),
+  isNative: () => getBackend().native,
+}

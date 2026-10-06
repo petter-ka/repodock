@@ -1,0 +1,25 @@
+# Go
+bin/
+build/bin/
+*.test
+*.out
+
+# Wails generated frontend bindings
+frontend/src/wailsjs/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Local app data / test artifacts
+.repodoctest/

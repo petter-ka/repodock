@@ -1,0 +1,36 @@
+# ADRs
+
+Use the following template for new architectural decisions:
+
+```md
+# ADR-NNNN: <decision>
+
+- Status: Proposed | Accepted | Superseded | Rejected
+- Date: YYYY-MM-DD
+
+## Context
+
+## Decision
+
+## Alternatives considered
+
+## Consequences
+
+## Reconsider when
+```
+
+## Index
+
+| ADR | Decision | Status |
+|---|---|---|
+| 0001 | Use Wails v2 | Accepted |
+| 0002 | Go owns processes | Accepted |
+| 0003 | Versioned JSON workspace | Accepted |
+| 0004 | React + TS + Vite + Tailwind + shadcn/ui | Accepted |
+| 0005 | Env files are explicit local documents | Accepted |
+| 0006 | Empty command is a no-op step | Accepted |
+| 0007 | Terminate process trees | Accepted |
+| 0008 | Shell text vs structured invocation boundary | Accepted |
+| 0009 | Sequences execute in the backend | Accepted |
+| 0010 | Group runs: sequential or parallel | Accepted |
+| 0011 | Export/import groups and repositories as JSON | Accepted |
