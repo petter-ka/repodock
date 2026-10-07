@@ -1,0 +1,2 @@
+# Shell scripts are piped to sh on macOS/Linux; CRLF would break them.
+*.sh text eol=lf

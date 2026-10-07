@@ -171,7 +171,13 @@ jobs:
               echo "| ${platform} | [${name}](${base}/${name}) |"
             done
             echo
-            echo "Builds are not code-signed yet. Windows SmartScreen: *More info → Run anyway*. macOS: right-click the app → *Open*, or run \`xattr -dr com.apple.quarantine /Applications/RepoDock.app\`."
+            echo "**macOS — recommended install** (verifies the checksum; no Gatekeeper prompt):"
+            echo
+            echo '```sh'
+            echo "curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh | REPODOCK_VERSION=${TAG} sh"
+            echo '```'
+            echo
+            echo "Builds are not code-signed yet. If you download the macOS zip in a browser, the first launch is blocked. On macOS 15 and later, open the app once, then go to *System Settings → Privacy & Security → Open Anyway*. On any version, you can run \`xattr -dr com.apple.quarantine /Applications/RepoDock.app\` instead. Windows SmartScreen: *More info → Run anyway*."
           } > downloads.md
 
           # Replace a previous table (re-runs) instead of appending twice.

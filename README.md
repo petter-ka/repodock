@@ -7,7 +7,19 @@ Native multiplatform developer command center for local Node.js repositories.
 
 RepoDock is designed for teams who have many Node.js / React / Next.js / NestJS repositories and want a fast native UI for starting, stopping, grouping and observing repository commands without opening each project individually.
 
-## Download
+## Install
+
+### macOS (recommended)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/petter-ka/repodock/main/install.sh | sh
+```
+
+The [script](install.sh) downloads the latest release, verifies it against `SHA256SUMS.txt`, and installs `RepoDock.app` into `/Applications` (or `~/Applications`). Run it again to update. Pin a version with `REPODOCK_VERSION=v0.2.0`, or choose a folder with `REPODOCK_INSTALL_DIR`.
+
+RepoDock is not yet signed with an Apple Developer ID. A zip downloaded in a browser is therefore blocked by Gatekeeper ("Apple could not verify…"). Files downloaded with `curl` are not quarantined, so the installed app opens normally.
+
+### Manual download
 
 Get the latest build from the **[Releases page](https://github.com/petter-ka/repodock/releases/latest)**:
 
@@ -16,9 +28,13 @@ Get the latest build from the **[Releases page](https://github.com/petter-ka/rep
 | Windows 10/11 x64 | `RepoDock-<version>-windows-amd64-installer.exe` (installer) or `…-windows-amd64.zip` (portable) |
 | macOS (Apple Silicon and Intel) | `RepoDock-<version>-macos-universal.zip` — unzip and move `RepoDock.app` to Applications |
 
-**macOS/Linux: `command not found: npm`?** RepoDock reads the PATH of your interactive shell (including `~/.zshrc`, where nvm/fnm usually live) when it starts. Restart RepoDock after installing Node or a version manager. If your shell profile takes longer than 8 seconds to load, RepoDock falls back to common install folders (Homebrew, volta, nvm, …).
+Verify downloads against `SHA256SUMS.txt`. Builds are not code-signed yet:
 
-Builds are not code-signed yet. On Windows, SmartScreen may ask you to confirm (*More info → Run anyway*). On macOS, right-click the app and choose *Open* the first time, or run `xattr -dr com.apple.quarantine /Applications/RepoDock.app`. Verify downloads against `SHA256SUMS.txt`.
+- **macOS 15 (Sequoia) and later:** open the app once and dismiss the warning. Then go to **System Settings → Privacy & Security**, click **Open Anyway** and confirm. Right-click → *Open* no longer bypasses the check.
+- **Any macOS version:** run `xattr -dr com.apple.quarantine /Applications/RepoDock.app` once.
+- **Windows:** SmartScreen may ask you to confirm (*More info → Run anyway*).
+
+**macOS/Linux: `command not found: npm`?** RepoDock reads the PATH of your interactive shell (including `~/.zshrc`, where nvm/fnm usually live) when it starts. Restart RepoDock after installing Node or a version manager. If your shell profile takes longer than 8 seconds to load, RepoDock falls back to common install folders (Homebrew, volta, nvm, …).
 
 ## Goals
 
