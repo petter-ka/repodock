@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6874f5"/>
+      <stop offset="1" stop-color="#3a2fb0"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glyphShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#14104a" flood-opacity="0.35"/>
+    </filter>
+    <filter id="tileShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <g filter="url(#tileShadow)">
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#shine)"/>
+  <g transform="translate(100 100) scale(0.8046875)" filter="url(#glyphShadow)">
+  <g transform="translate(512 512) scale(1.12) translate(-540 -512)" fill="#ffffff">
+    <rect x="340" y="280" width="112" height="464" rx="8"/>
+    <path fill-rule="evenodd" d="M348 280 H565 A140 140 0 0 1 565 560 H348 Z M452 386 H558 A34 34 0 0 1 558 454 H452 Z"/>
+    <path d="M482 536 H606 L748 744 H616 Z"/>
+  </g></g>
+</svg>
