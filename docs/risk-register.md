@@ -13,3 +13,4 @@
 | R-008 | A module bypasses shared contracts and couples the app shell | Medium | Medium | Dependency rules and module contract docs | Architecture |
 | R-009 | Large repositories make refresh expensive | Medium | Medium | Lazy refresh, file watchers, and incremental scanning in later stage | Repository module |
 | R-011 | Killing the wrong process from the Kill process mini app | Medium | Low | Explicit search with full process details, per-kill inline confirmation, graceful SIGTERM first, backend refuses PID ≤ 1, RepoDock and its ancestors, RepoDock runs are stopped through the process manager (ADR-0018) | Product |
+| R-012 | Child processes outlive RepoDock (ghosts holding ports) after quit, signal or crash | High | Medium | Synchronous group kill on shutdown, signal handling, out-of-process watchdog, same-boot startup sweep with PID-reuse checks; Windows Job Objects (ADR-0019) | Process module |

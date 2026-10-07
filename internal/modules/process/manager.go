@@ -54,6 +54,15 @@ type Options struct {
 	PromptIdle time.Duration
 	// RetainFinished bounds how many finished runs are kept for display.
 	RetainFinished int
+	// Guard, when set, is told about every process group so they can be
+	// killed even if RepoDock crashes (ADR-0019).
+	Guard GroupGuard
+}
+
+// GroupGuard records process groups that must not outlive RepoDock.
+type GroupGuard interface {
+	Track(pgid int, command string)
+	Untrack(pgid int)
 }
 
 func DefaultOptions() Options {
@@ -63,8 +72,12 @@ func DefaultOptions() Options {
 type Manager struct {
 	opts Options
 
-	mu        sync.RWMutex
-	runs      map[string]*trackedRun
+	mu   sync.RWMutex
+	runs map[string]*trackedRun
+	// groups are process groups started by RepoDock that may still have
+	// members, including ones whose leader (the shell) already exited.
+	groupMu   sync.Mutex
+	groups    map[int]struct{}
 	order     []string
 	snapshots map[string]domain.ProcessSnapshot
 
@@ -81,6 +94,7 @@ type trackedRun struct {
 	spec          Spec
 	cmd           *exec.Cmd
 	tree          platform.Tree
+	pgid          int
 	done          chan struct{}
 	stopRequested bool
 
@@ -92,7 +106,7 @@ type trackedRun struct {
 }
 
 func New(opts Options) *Manager {
-	m := &Manager{opts: opts, runs: map[string]*trackedRun{}, snapshots: map[string]domain.ProcessSnapshot{}}
+	m := &Manager{opts: opts, runs: map[string]*trackedRun{}, groups: map[int]struct{}{}, snapshots: map[string]domain.ProcessSnapshot{}}
 	m.output = newBatcher(opts.OutputInterval, 500, func(lines []domain.ProcessOutput) { m.emit(EventOutputBatch, lines) })
 	m.stats = newStatsSampler(m, opts.StatsInterval)
 	platform.WarmEnvironment()
@@ -167,8 +181,11 @@ func (m *Manager) Start(spec Spec) (domain.Run, error) {
 		return m.failStart(t, fmt.Errorf("start command: %w", err)), nil
 	}
 	tree := platform.Attach(cmd)
+	pgid := platform.GroupID(cmd)
+	m.trackGroup(pgid, t.run.Command)
 
 	m.mu.Lock()
+	t.pgid = pgid
 	t.tree = tree
 	t.run.PID = cmd.Process.Pid
 	t.run.Status = domain.RunRunning
@@ -334,6 +351,7 @@ func (m *Manager) wait(t *trackedRun, stdout, stderr *lineWriter) {
 	if t.tree != nil {
 		t.tree.Close()
 	}
+	m.releaseGroup(t.pgid)
 
 	exitCode := -1
 	if t.cmd.ProcessState != nil {
@@ -487,25 +505,76 @@ func (m *Manager) StopRepository(repoID string) error {
 }
 
 // Shutdown stops every active run and waits up to timeout for them to exit.
+//
+// It returns only after every process group RepoDock started is gone: groups
+// get SIGTERM (through Stop, plus groups whose shell already exited), and
+// whatever is still alive after timeout is SIGKILLed synchronously — the
+// asynchronous escalation in Stop would die with the app and leave ghosts.
 func (m *Manager) Shutdown(timeout time.Duration) {
-	active := m.ActiveRuns()
-	for _, run := range active {
+	for _, run := range m.ActiveRuns() {
 		_ = m.Stop(run.ID)
 	}
-	deadline := time.After(timeout)
-	for _, run := range active {
-		if done, ok := m.Done(run.ID); ok {
-			select {
-			case <-done:
-			case <-deadline:
-				m.stats.close()
-				m.output.close()
-				return
-			}
-		}
+	groups := m.liveGroups()
+	for _, pgid := range groups {
+		_ = platform.SignalGroup(pgid, false)
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) && len(m.liveGroups()) > 0 {
+		time.Sleep(50 * time.Millisecond)
+	}
+	for _, pgid := range m.liveGroups() {
+		_ = platform.SignalGroup(pgid, true)
+	}
+	// Let exit handlers flush output and release the groups.
+	settle := time.Now().Add(time.Second)
+	for time.Now().Before(settle) && len(m.ActiveRuns()) > 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	for _, pgid := range groups {
+		m.releaseGroup(pgid)
 	}
 	m.stats.close()
 	m.output.close()
+}
+
+func (m *Manager) trackGroup(pgid int, command string) {
+	if pgid <= 0 {
+		return
+	}
+	m.groupMu.Lock()
+	m.groups[pgid] = struct{}{}
+	m.groupMu.Unlock()
+	if m.opts.Guard != nil {
+		m.opts.Guard.Track(pgid, command)
+	}
+}
+
+// releaseGroup forgets a group once no member is alive. A group whose shell
+// exited but left children behind stays tracked, so quitting kills them.
+func (m *Manager) releaseGroup(pgid int) {
+	if pgid <= 0 || platform.GroupAlive(pgid) {
+		return
+	}
+	m.groupMu.Lock()
+	_, ok := m.groups[pgid]
+	delete(m.groups, pgid)
+	m.groupMu.Unlock()
+	if ok && m.opts.Guard != nil {
+		m.opts.Guard.Untrack(pgid)
+	}
+}
+
+// liveGroups returns tracked groups that still have members.
+func (m *Manager) liveGroups() []int {
+	m.groupMu.Lock()
+	defer m.groupMu.Unlock()
+	out := []int{}
+	for pgid := range m.groups {
+		if platform.GroupAlive(pgid) {
+			out = append(out, pgid)
+		}
+	}
+	return out
 }
 
 // ActiveRuns returns runs that still own a live process, oldest first.

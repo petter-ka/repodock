@@ -23,6 +23,7 @@ Build a polished, native, local-first desktop command center for many local Node
 - Always attach repository ID, run ID, PID and stream type to output events.
 - Track exit code and terminal state.
 - Prefer process-tree termination over killing only the parent.
+- Every process group RepoDock starts must be tracked by the process manager (and so by the crash guard) until no member is alive; nothing may outlive RepoDock (ADR-0019).
 - Treat shell command text as untrusted input: do not concatenate user-controlled values into commands without an explicit boundary.
 
 ## Repository rules

@@ -86,3 +86,7 @@ Use gopsutil for cross-platform basic metrics, aggregated over the run's whole p
 - process count and root process status.
 
 One shared sampler ticks at about 1 Hz for all runs, builds a single parent map per tick, and sleeps while nothing is running.
+
+## Nothing outlives RepoDock (ADR-0019)
+
+Every process group is tracked from start until its last member exits (not just the shell). Quitting SIGTERMs all tracked groups and SIGKILLs survivors synchronously after 5 s; SIGINT/SIGTERM/SIGHUP run the same shutdown. A watchdog process (the RepoDock binary with `--repodock-process-watchdog`) receives the tracked groups over a pipe and kills them if RepoDock dies without saying goodbye (crash, Force Quit). `running-processes.json` lets the next launch kill same-boot leftovers if the watchdog died too. Windows relies on kill-on-close Job Objects.

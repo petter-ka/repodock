@@ -8,14 +8,19 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/example/repodock/internal/domain"
 	envmod "github.com/example/repodock/internal/modules/environment"
 	hostmod "github.com/example/repodock/internal/modules/hostprocess"
 	processmod "github.com/example/repodock/internal/modules/process"
+	"github.com/example/repodock/internal/modules/process/guard"
 	repomod "github.com/example/repodock/internal/modules/repository"
 	seqmod "github.com/example/repodock/internal/modules/sequence"
 	workspacemod "github.com/example/repodock/internal/modules/workspace"
@@ -35,6 +40,8 @@ type App struct {
 	process   *processmod.Manager
 	sequence  *seqmod.Runner
 	host      *hostmod.Service
+	// guard kills leftover process groups after a crash (ADR-0019); nil in tests.
+	guard *guard.Guard
 
 	reportMu sync.RWMutex
 	report   domain.StartupReport
@@ -43,8 +50,24 @@ type App struct {
 }
 
 func New() *App {
-	return NewWith(workspacemod.New(), processmod.DefaultOptions())
+	ws := workspacemod.New()
+	g := guard.New(filepath.Join(filepath.Dir(ws.Path()), "running-processes.json"))
+	opts := processmod.DefaultOptions()
+	opts.Guard = g
+	a := NewWith(ws, opts)
+	a.guard = g
+	return a
 }
+
+// IsWatchdog reports whether this process was started as RepoDock's process
+// watchdog rather than as the app (see guard.WatchdogFlag).
+func IsWatchdog(args []string) bool {
+	return len(args) > 1 && args[1] == guard.WatchdogFlag
+}
+
+// RunWatchdog runs the watchdog until RepoDock exits; it then kills any
+// process group RepoDock left behind.
+func RunWatchdog() { guard.RunWatchdog(os.Stdin) }
 
 // NewWith allows tests and tools to supply a workspace location and process
 // tuning.
@@ -71,7 +94,44 @@ func (a *App) startup(ctx context.Context) {
 	emit := func(event string, payload any) { runtime.EventsEmit(ctx, event, payload) }
 	a.process.SetEmitter(emit)
 	a.sequence.SetEmitter(emit)
+	leftovers := a.startGuard()
 	a.boot()
+	if leftovers > 0 {
+		a.reportMu.Lock()
+		a.report.Warnings = append(a.report.Warnings, fmt.Sprintf("Stopped %d process group(s) left running by the previous session.", leftovers))
+		a.reportMu.Unlock()
+	}
+	a.handleSignals(ctx)
+}
+
+// startGuard kills what a crashed previous session left behind and starts
+// the watchdog for this session. It returns how many groups were stopped.
+func (a *App) startGuard() int {
+	if a.guard == nil {
+		return 0
+	}
+	leftovers := a.guard.SweepPrevious()
+	for _, e := range leftovers {
+		slog.Warn("stopped leftover process group", "pgid", e.PGID)
+	}
+	if err := a.guard.StartWatchdog(); err != nil {
+		slog.Warn("process watchdog not started", "error", err)
+	}
+	return len(leftovers)
+}
+
+// handleSignals runs the normal shutdown (which stops every child process)
+// when RepoDock is asked to terminate by a signal: logout, kill, or Ctrl+C
+// during development. Without it those paths would skip OnShutdown.
+func (a *App) handleSignals(ctx context.Context) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		sig := <-signals
+		slog.Info("terminating on signal", "signal", sig.String())
+		a.shutdown(ctx)
+		os.Exit(1)
+	}()
 }
 
 // boot loads persisted state and refreshes repository metadata off the UI
@@ -99,6 +159,9 @@ func (a *App) boot() {
 func (a *App) shutdown(_ context.Context) {
 	a.shutdownOnce.Do(func() {
 		a.process.Shutdown(5 * time.Second)
+		if a.guard != nil {
+			a.guard.Close()
+		}
 		if err := a.workspace.Save(); err != nil {
 			slog.Error("save workspace on shutdown", "error", err)
 		}

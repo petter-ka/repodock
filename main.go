@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"os"
 
 	"github.com/example/repodock/internal/app"
 	"github.com/wailsapp/wails/v2"
@@ -14,6 +15,12 @@ import (
 var assets embed.FS
 
 func main() {
+	// The same binary doubles as the process watchdog (ADR-0019); it must
+	// branch off before any UI is created.
+	if app.IsWatchdog(os.Args) {
+		app.RunWatchdog()
+		return
+	}
 	application := app.New()
 	onStartup, onShutdown := app.Hooks(application)
 

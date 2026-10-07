@@ -41,3 +41,4 @@ Use the following template for new architectural decisions:
 | 0016 | TanStack Virtual console and constant-memory scrollback | Accepted |
 | 0017 | Quick commands, Background drawer, resizable sidebar | Accepted |
 | 0018 | Mini apps (floating tools) and the Kill process app | Accepted |
+| 0019 | No ghost processes after quit, signal or crash | Accepted |
