@@ -20,8 +20,10 @@ import (
 const (
 	// Format identifies RepoDock export documents.
 	Format = "repodock.workspace-export"
-	// Version is the current export document version.
-	Version = 1
+	// Version is the current export document version. Version 2 added
+	// globalCommands and the step globalCommand reference; version 1
+	// documents are still read.
+	Version = 2
 	// MaxDocumentSize bounds import files.
 	MaxDocumentSize = 4 << 20
 	maxNameLength   = 200
@@ -31,10 +33,13 @@ const (
 // Document is the on-disk export format. Field names are part of the file
 // contract; change them only with a version bump.
 type Document struct {
-	Format     string          `json:"format"`
-	Version    int             `json:"version"`
-	ExportedAt time.Time       `json:"exportedAt"`
-	Groups     []DocumentGroup `json:"groups"`
+	Format     string    `json:"format"`
+	Version    int       `json:"version"`
+	ExportedAt time.Time `json:"exportedAt"`
+	// GlobalCommands are referenced from steps by ID. IDs are only
+	// meaningful inside the document; import assigns local ones.
+	GlobalCommands []domain.GlobalCommand `json:"globalCommands,omitempty"`
+	Groups         []DocumentGroup        `json:"groups"`
 }
 
 type DocumentGroup struct {
@@ -51,7 +56,8 @@ type DocumentRepository struct {
 	CommandSequence []domain.CommandStep `json:"commandSequence"`
 }
 
-// Build exports the given groups (all when groupIDs is empty).
+// Build exports the given groups (all when groupIDs is empty). A full export
+// carries every global command; a partial one only those its steps use.
 func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (Document, error) {
 	wanted := map[string]bool{}
 	for _, id := range groupIDs {
@@ -84,6 +90,22 @@ func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (
 	if len(wanted) > 0 && len(doc.Groups) != len(wanted) {
 		return Document{}, fmt.Errorf("one or more groups to export were not found")
 	}
+
+	used := map[string]bool{}
+	for _, group := range doc.Groups {
+		for _, repo := range group.Repositories {
+			for _, step := range repo.CommandSequence {
+				if step.Script == "" && step.GlobalCommand != "" {
+					used[step.GlobalCommand] = true
+				}
+			}
+		}
+	}
+	for _, cmd := range ws.GlobalCommands {
+		if len(wanted) == 0 || used[cmd.ID] {
+			doc.GlobalCommands = append(doc.GlobalCommands, cmd)
+		}
+	}
 	return doc, nil
 }
 
@@ -114,6 +136,30 @@ func Parse(data []byte) (Document, error) {
 	if doc.Version < 1 || doc.Version > Version {
 		return doc, fmt.Errorf("export version %d is not supported (this RepoDock reads version %d)", doc.Version, Version)
 	}
+	if doc.Version < 2 && len(doc.GlobalCommands) > 0 {
+		return doc, fmt.Errorf("global commands require export version 2")
+	}
+	globals := map[string]bool{}
+	names := map[string]bool{}
+	for i, cmd := range doc.GlobalCommands {
+		if err := validName(cmd.Name); err != nil {
+			return doc, fmt.Errorf("global command %d: %w", i+1, err)
+		}
+		if strings.TrimSpace(cmd.ID) == "" || globals[cmd.ID] {
+			return doc, fmt.Errorf("global command %q: missing or repeated id", cmd.Name)
+		}
+		key := strings.ToLower(strings.TrimSpace(cmd.Name))
+		if names[key] {
+			return doc, fmt.Errorf("global command name %q is used more than once", cmd.Name)
+		}
+		if strings.TrimSpace(cmd.Command) == "" {
+			return doc, fmt.Errorf("global command %q: command is empty", cmd.Name)
+		}
+		if strings.ContainsAny(cmd.Name+cmd.Command, "\r\n\x00") {
+			return doc, fmt.Errorf("global command %q contains line breaks or NUL bytes", cmd.Name)
+		}
+		globals[cmd.ID], names[key] = true, true
+	}
 	for gi, group := range doc.Groups {
 		if err := validName(group.Name); err != nil {
 			return doc, fmt.Errorf("group %d: %w", gi+1, err)
@@ -134,6 +180,9 @@ func Parse(data []byte) (Document, error) {
 					if strings.ContainsAny(text, "\r\n\x00") {
 						return doc, fmt.Errorf("%s: step %q contains line breaks or NUL bytes", where, step.Label)
 					}
+				}
+				if step.Script == "" && step.GlobalCommand != "" && !globals[step.GlobalCommand] {
+					return doc, fmt.Errorf("%s: step %q references an unknown global command", where, step.Label)
 				}
 			}
 		}
@@ -163,7 +212,15 @@ type Environment struct {
 
 // Plan describes what Merge would do, for the confirmation dialog.
 func Plan(doc Document, current domain.Workspace, env Environment) domain.ImportPreview {
-	preview := domain.ImportPreview{ExportedAt: doc.ExportedAt, Groups: []domain.ImportGroupPreview{}}
+	preview := domain.ImportPreview{ExportedAt: doc.ExportedAt, Groups: []domain.ImportGroupPreview{}, GlobalCommands: []domain.ImportGlobalCommandPreview{}}
+	for _, p := range planGlobals(doc, current) {
+		preview.GlobalCommands = append(preview.GlobalCommands, domain.ImportGlobalCommandPreview{
+			ID: p.doc.ID, Name: strings.TrimSpace(p.doc.Name), Command: strings.TrimSpace(p.doc.Command), Status: p.status, ImportName: p.name,
+		})
+		if p.status != domain.ImportGlobalExisting {
+			preview.ShellCommands++
+		}
+	}
 	seen := []string{}
 	for _, group := range doc.Groups {
 		g := domain.ImportGroupPreview{Name: strings.TrimSpace(group.Name), Repositories: []domain.ImportRepositoryPreview{}}
@@ -173,7 +230,9 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 		}
 		for _, repo := range group.Repositories {
 			path := LocalPath(repo.Path, env.Home)
-			r := domain.ImportRepositoryPreview{Name: repo.Name, Path: path, Steps: sanitizeSteps(repo.CommandSequence, true)}
+			// Preview steps keep document global command IDs, which match
+			// preview.GlobalCommands[].ID.
+			r := domain.ImportRepositoryPreview{Name: repo.Name, Path: path, Steps: sanitizeSteps(repo.CommandSequence, true, nil)}
 			switch {
 			case containsPath(seen, path, env.SamePath):
 				r.Status = domain.ImportDuplicate
@@ -190,7 +249,7 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 			}
 			if r.Status == domain.ImportNew || r.Status == domain.ImportMissing {
 				for _, step := range r.Steps {
-					if step.Script == "" && step.Command != "" {
+					if step.Script == "" && step.GlobalCommand == "" && step.Command != "" {
 						preview.ShellCommands++
 					}
 				}
@@ -203,16 +262,31 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 	return preview
 }
 
-// Merge adds the document's groups and repositories to current without
-// changing anything that already exists: groups are matched by name
-// (case-insensitively), repositories by path. It returns the new workspace
-// and the IDs of added repositories, which the caller should refresh.
+// Merge adds the document's groups, repositories and global commands to
+// current without changing anything that already exists: groups are
+// matched by name (case-insensitively), repositories by path, and global
+// commands by name and command text (a name clash with different text adds
+// a renamed copy). It returns the new workspace and the IDs of added
+// repositories, which the caller should refresh.
 func Merge(doc Document, current domain.Workspace, env Environment, opts domain.ImportOptions) (domain.Workspace, []string, domain.ImportResult) {
 	ws := current
 	ws.Groups = append([]domain.Group{}, current.Groups...)
 	ws.Repositories = append([]domain.Repository{}, current.Repositories...)
+	ws.GlobalCommands = append([]domain.GlobalCommand{}, current.GlobalCommands...)
 	result := domain.ImportResult{}
 	added := []string{}
+
+	globalIDs := map[string]string{} // document ID → local ID
+	for _, p := range planGlobals(doc, current) {
+		if p.status == domain.ImportGlobalExisting {
+			globalIDs[p.doc.ID] = p.localID
+			continue
+		}
+		local := domain.GlobalCommand{ID: uuid.NewString(), Name: p.name, Command: strings.TrimSpace(p.doc.Command)}
+		ws.GlobalCommands = append(ws.GlobalCommands, local)
+		globalIDs[p.doc.ID] = local.ID
+		result.GlobalCommandsAdded++
+	}
 
 	for _, group := range doc.Groups {
 		name := strings.TrimSpace(group.Name)
@@ -227,7 +301,7 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 			result.GroupsCreated++
 		}
 		for _, repo := range group.Repositories {
-			path := LocalPath(repo.Path, env.Home)
+			path := overridePath(LocalPath(repo.Path, env.Home), opts.PathOverrides, env.SamePath)
 			if findRepoByPath(ws, path, env.SamePath) != nil {
 				result.RepositoriesSkipped++
 				continue
@@ -235,7 +309,7 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 			record := domain.Repository{
 				ID: uuid.NewString(), Name: strings.TrimSpace(repo.Name), Path: path, GroupID: target.ID,
 				Scripts: []domain.Script{}, EnvFiles: []string{},
-				CommandSequence: sanitizeSteps(repo.CommandSequence, opts.KeepStepsEnabled),
+				CommandSequence: sanitizeSteps(repo.CommandSequence, opts.KeepStepsEnabled, globalIDs),
 			}
 			if record.Name == "" {
 				record.Name = filepath.Base(path)
@@ -251,7 +325,9 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 
 // sanitizeSteps copies steps with fresh IDs. Unless keepEnabled is set,
 // every imported step is disabled so nothing runs until the user reviews it.
-func sanitizeSteps(steps []domain.CommandStep, keepEnabled bool) []domain.CommandStep {
+// When globalIDs is non-nil, global command references are rewritten from
+// document IDs to local IDs.
+func sanitizeSteps(steps []domain.CommandStep, keepEnabled bool, globalIDs map[string]string) []domain.CommandStep {
 	if steps == nil {
 		return nil
 	}
@@ -260,13 +336,85 @@ func sanitizeSteps(steps []domain.CommandStep, keepEnabled bool) []domain.Comman
 		step.ID = uuid.NewString()
 		step.Label = strings.TrimSpace(step.Label)
 		step.Script = strings.TrimSpace(step.Script)
+		step.GlobalCommand = strings.TrimSpace(step.GlobalCommand)
 		step.Command = strings.TrimSpace(step.Command)
+		if step.Script != "" {
+			step.GlobalCommand = ""
+		}
+		if step.GlobalCommand != "" {
+			step.Command = ""
+			if globalIDs != nil {
+				step.GlobalCommand = globalIDs[step.GlobalCommand]
+			}
+		}
 		if !keepEnabled {
 			step.Enabled = false
 		}
 		out = append(out, step)
 	}
 	return out
+}
+
+// globalPlan is what importing one document global command will do.
+type globalPlan struct {
+	doc    domain.GlobalCommand
+	status domain.ImportGlobalCommandStatus
+	// name is the local name after import.
+	name string
+	// localID is set when an identical command already exists.
+	localID string
+}
+
+// planGlobals reuses an existing command with the same name and text, and
+// otherwise adds the document command, renaming it when its name is taken.
+func planGlobals(doc Document, current domain.Workspace) []globalPlan {
+	taken := map[string]bool{}
+	for _, cmd := range current.GlobalCommands {
+		taken[strings.ToLower(strings.TrimSpace(cmd.Name))] = true
+	}
+	out := make([]globalPlan, 0, len(doc.GlobalCommands))
+	for _, cmd := range doc.GlobalCommands {
+		name, command := strings.TrimSpace(cmd.Name), strings.TrimSpace(cmd.Command)
+		p := globalPlan{doc: cmd, status: domain.ImportGlobalNew, name: name}
+		for _, existing := range current.GlobalCommands {
+			if strings.EqualFold(strings.TrimSpace(existing.Name), name) && strings.TrimSpace(existing.Command) == command {
+				p.status, p.localID, p.name = domain.ImportGlobalExisting, existing.ID, existing.Name
+				break
+			}
+		}
+		if p.status != domain.ImportGlobalExisting {
+			if taken[strings.ToLower(name)] {
+				p.status, p.name = domain.ImportGlobalRenamed, uniqueName(name, taken)
+			}
+			taken[strings.ToLower(p.name)] = true
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// uniqueName returns "name (imported)", "name (imported 2)", … — the first
+// one not in taken.
+func uniqueName(name string, taken map[string]bool) string {
+	for n := 1; ; n++ {
+		candidate := name + " (imported)"
+		if n > 1 {
+			candidate = fmt.Sprintf("%s (imported %d)", name, n)
+		}
+		if !taken[strings.ToLower(candidate)] {
+			return candidate
+		}
+	}
+}
+
+// overridePath returns the user's replacement for path, if any.
+func overridePath(path string, overrides map[string]string, same func(a, b string) bool) string {
+	for from, to := range overrides {
+		if strings.TrimSpace(to) != "" && same(from, path) {
+			return filepath.Clean(strings.TrimSpace(to))
+		}
+	}
+	return path
 }
 
 // portablePath rewrites paths under home as "~/…" with forward slashes.

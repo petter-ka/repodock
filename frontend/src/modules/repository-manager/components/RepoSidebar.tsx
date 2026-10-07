@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDownUp, ChevronDown, Download, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowDownUp, CheckCircle2, ChevronDown, CircleDot, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { forwardRef, useMemo, useState } from "react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { PromptDialog } from "@/components/shared/PromptDialog"
@@ -12,12 +12,14 @@ import { Kbd } from "@/components/ui/kbd"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { modLabel } from "@/lib/keyboard"
-import { cn } from "@/lib/utils"
-import type { Group, GroupRepoState, GroupRunMode, ImportPreview, Repository } from "../domain"
+import { cn, formatTime } from "@/lib/utils"
+import { type Group, type GroupRepoState, type GroupRunMode, type ImportPreview, type Repository } from "../domain"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
 import { useProcessVersion, useWorkspaceState } from "../hooks/useStores"
 import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
+import { latestRunHealth, type RepoHealth } from "../repoStatus"
+import { GlobalCommandsDialog } from "./GlobalCommandsDialog"
 import { ImportDialog } from "./ImportDialog"
 
 type DialogState =
@@ -34,12 +36,17 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   const [query, setQuery] = useState("")
   const [dialog, setDialog] = useState<DialogState>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
+  const [globalsOpen, setGlobalsOpen] = useState(false)
 
-  const running = useMemo(() => {
+  const { running, latest } = useMemo(() => {
     void version
-    const counts = new Map<string, number>()
-    for (const repo of workspace.repositories) counts.set(repo.id, processStore.activeCount(repo.id))
-    return counts
+    const running = new Map<string, number>()
+    const latest = new Map<string, ReturnType<typeof latestRunHealth>>()
+    for (const repo of workspace.repositories) {
+      running.set(repo.id, processStore.activeCount(repo.id))
+      latest.set(repo.id, latestRunHealth(processStore.runsFor(repo.id)))
+    }
+    return { running, latest }
   }, [version, workspace.repositories])
 
   const totalRunning = [...running.values()].reduce((sum, n) => sum + n, 0)
@@ -65,7 +72,9 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
             </Tooltip>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => void actions.previewImport().then((preview) => preview && setImportPreview(preview))}><Upload /> {t.transfer.import}</DropdownMenuItem>
-              <DropdownMenuItem disabled={workspace.repositories.length === 0} onSelect={() => void actions.exportWorkspace()}><Download /> {t.transfer.exportAll}</DropdownMenuItem>
+              <DropdownMenuItem disabled={workspace.repositories.length === 0 && workspace.globalCommands.length === 0} onSelect={() => void actions.exportWorkspace()}><Download /> {t.transfer.exportAll}</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setGlobalsOpen(true)}><Globe /> {t.globalCommands.menu}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Tooltip label={<span className="flex items-center gap-1.5">{t.sidebar.add} <Kbd>{modLabel}</Kbd><Kbd>O</Kbd></span>}>
@@ -191,6 +200,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                       groups={workspace.groups}
                       selected={repo.id === selectedRepoId}
                       running={running.get(repo.id) ?? 0}
+                      latest={latest.get(repo.id) ?? null}
                       groupState={memberState.get(repo.id)}
                       actions={actions}
                       onRemove={() => setDialog({ kind: "removeRepo", repo })}
@@ -211,6 +221,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
       </nav>
 
       <ImportDialog preview={importPreview} actions={actions} onClose={() => setImportPreview(null)} />
+      <GlobalCommandsDialog open={globalsOpen} actions={actions} onOpenChange={setGlobalsOpen} />
       <PromptDialog
         open={dialog?.kind === "createGroup" || dialog?.kind === "renameGroup"}
         title={dialog?.kind === "renameGroup" ? t.groupDialog.renameTitle : t.groupDialog.createTitle}
@@ -246,31 +257,48 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   )
 })
 
-function RepoItem({ repo, groups, selected, running, groupState, actions, onRemove }: {
+const healthIcon: Record<RepoHealth, React.ReactNode> = {
+  running: <CircleDot className="size-4 animate-pulse text-success" />,
+  success: <CheckCircle2 className="size-4 text-success" />,
+  danger: <XCircle className="size-4 text-destructive" />,
+}
+
+function RepoItem({ repo, groups, selected, running, latest, groupState, actions, onRemove }: {
   repo: Repository
   groups: Group[]
   selected: boolean
   running: number
+  /** latest command of this repository and its health */
+  latest: ReturnType<typeof latestRunHealth>
   /** this repository's state in a running group run */
   groupState?: GroupRepoState
   actions: RepositoryActions
   onRemove: () => void
 }) {
   const { t, f } = useI18n()
+  const lastRunText = !latest
+    ? ""
+    : latest.health === "running"
+      ? f(t.sidebar.runningSince, { count: running, label: latest.run.label, time: formatTime(latest.run.startedAt) })
+      : f(t.sidebar.lastRunExit, {
+          label: latest.run.label,
+          status: t.process.status[latest.run.status],
+          code: latest.run.exitCode,
+          time: formatTime(latest.run.startedAt),
+        })
   return (
     <li className={cn("group/item relative flex items-center rounded-lg transition", selected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground")}>
       <button
         aria-current={selected ? "page" : undefined}
         onClick={() => workspaceStore.select(repo.id)}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-2 pl-3 pr-9 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        title={repo.path}
+        title={latest ? `${repo.path}\n${lastRunText}` : repo.path}
       >
-        <span className="relative">
+        {latest ? (
+          <span className="shrink-0" role="img" aria-label={lastRunText}>{healthIcon[latest.health]}</span>
+        ) : (
           <FolderGit2 className="size-4 shrink-0" />
-          {running > 0 && (
-            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-success ring-2 ring-sidebar" aria-label={f(t.sidebar.running, { count: running })} />
-          )}
-        </span>
+        )}
         <span className="min-w-0 flex-1 truncate font-medium">{repo.name}</span>
         {groupState?.status === "pending" ? (
           <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-label={t.groupRun.queued} />
@@ -293,6 +321,7 @@ function RepoItem({ repo, groups, selected, running, groupState, actions, onRemo
         <DropdownMenuContent align="start" side="right">
           <DropdownMenuLabel className="max-w-56 truncate normal-case tracking-normal">{repo.name}</DropdownMenuLabel>
           <DropdownMenuItem onSelect={() => void actions.refresh(repo)}><RefreshCw /> {t.common.refresh}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void actions.relocate(repo)}><FolderSearch /> {t.relocate.action}</DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={groups.length < 2}><FolderInput /> {t.sidebar.moveTo}</DropdownMenuSubTrigger>
             <DropdownMenuSubContent>

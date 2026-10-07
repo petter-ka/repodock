@@ -23,6 +23,9 @@ var supportedManagers = map[string]bool{"npm": true, "pnpm": true, "yarn": true,
 // ErrNoPackageJSON is returned when the folder has no package.json.
 var ErrNoPackageJSON = errors.New("package.json not found")
 
+// ErrFolderNotFound is returned when the repository folder does not exist.
+var ErrFolderNotFound = errors.New("folder not found")
+
 // Metadata is everything discovery learns about a repository folder.
 type Metadata struct {
 	Path           string
@@ -46,6 +49,9 @@ func (s *Service) ResolvePath(path string) (string, error) {
 		return "", fmt.Errorf("resolve repository path: %w", err)
 	}
 	info, err := os.Stat(abs)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("%w: %s", ErrFolderNotFound, abs)
+	}
 	if err != nil {
 		return "", fmt.Errorf("repository folder %s: %w", abs, err)
 	}

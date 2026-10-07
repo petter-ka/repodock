@@ -7,7 +7,7 @@ type State = { workspace: Workspace; selectedRepoId: string | null; loaded: bool
 
 class WorkspaceStore {
   private state: State = {
-    workspace: { version: 1, groups: [], repositories: [] },
+    workspace: { version: 1, groups: [], repositories: [], globalCommands: [] },
     selectedRepoId: readPreference("selectedRepo") || null,
     loaded: false,
   }
@@ -29,6 +29,7 @@ class WorkspaceStore {
     const normalized: Workspace = {
       ...workspace,
       groups: workspace.groups ?? [],
+      globalCommands: workspace.globalCommands ?? [],
       repositories: (workspace.repositories ?? []).map((repo) => ({ ...repo, scripts: repo.scripts ?? [], envFiles: repo.envFiles ?? [] })),
     }
     let selected = this.state.selectedRepoId

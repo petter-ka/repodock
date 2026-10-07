@@ -10,10 +10,27 @@ const run = (patch: Partial<Run> = {}): Run => ({
 })
 
 const line = (seq: number, patch: Partial<ProcessOutput> = {}): ProcessOutput => ({
-  runId: "r1", repositoryId: "repo", pid: 10, stream: "stdout", text: `line ${seq}`, seq, timestamp: "", ...patch,
+  runId: "r1", repositoryId: "repo", pid: 10, stream: "stdout", text: `line ${seq}`, partial: false, seq, timestamp: "", ...patch,
 })
 
 describe("ProcessStore", () => {
+  it("tracks the prompt a running process waits on until it is answered", () => {
+    const store = new ProcessStore(immediate)
+    store.upsertRun(run())
+    store.applyOutput([line(1), line(2, { text: "Continue? (y/n) ", partial: true })])
+    expect(store.prompt("r1")).toBe("Continue? (y/n) ")
+    store.applyOutput([line(3, { stream: "stdin", text: "y" })])
+    expect(store.prompt("r1")).toBeUndefined()
+
+    store.applyOutput([line(4, { text: "Name: ", partial: true })])
+    store.applyOutput([line(5, { text: "more output" })])
+    expect(store.prompt("r1")).toBeUndefined()
+
+    store.applyOutput([line(6, { text: "Again? ", partial: true })])
+    store.applyExit({ runId: "r1", repositoryId: "repo", exitCode: 0, status: "exited", endedAt: "2026-10-06T10:01:00Z" })
+    expect(store.prompt("r1")).toBeUndefined()
+  })
+
   it("does not resurrect a finished run from a late event", () => {
     const store = new ProcessStore(immediate)
     store.upsertRun(run())

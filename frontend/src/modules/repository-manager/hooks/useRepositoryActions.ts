@@ -3,7 +3,7 @@ import { errorMessage } from "@/lib/bridge"
 import { useI18n } from "@/lib/i18n"
 import { useNotifications } from "@/state/notifications"
 import { repositoryApi } from "../api"
-import type { CommandStep, GroupRunMode, ImportOptions, ImportPreview, Repository, Run } from "../domain"
+import type { CommandStep, GlobalCommand, GroupRunMode, ImportOptions, ImportPreview, Repository, Run } from "../domain"
 import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
 
@@ -43,6 +43,16 @@ export function useRepositoryActions() {
         }
       },
       refresh: (repo: Repository) => guard(() => repositoryApi.refreshRepository(repo.id)),
+      /** Native folder picker; "" when cancelled. */
+      browseFolder: async () => (await guard(() => repositoryApi.browse())) ?? "",
+      checkFolder: (path: string) => repositoryApi.checkFolder(path),
+      async relocate(repo: Repository) {
+        const path = await guard(() => repositoryApi.browse())
+        if (!path) return undefined
+        const updated = await guard(() => repositoryApi.relocateRepository(repo.id, path))
+        if (updated) notify(f(t.relocate.done, { name: updated.name, path: updated.path }), { tone: "success" })
+        return updated
+      },
       remove: (repo: Repository) => guard(() => repositoryApi.removeRepository(repo.id)),
       createGroup: (name: string) => guard(() => repositoryApi.createGroup(name)),
       renameGroup: (id: string, name: string) => guard(() => repositoryApi.renameGroup(id, name)),
@@ -69,7 +79,7 @@ export function useRepositoryActions() {
       async applyImport(preview: ImportPreview, options: ImportOptions) {
         const result = await guard(() => repositoryApi.applyImport(preview.path, options))
         if (result) {
-          notify(f(t.transfer.imported, { groups: result.groupsCreated, added: result.repositoriesAdded, skipped: result.repositoriesSkipped }), { tone: "success", duration: 6000 })
+          notify(f(t.transfer.imported, { groups: result.groupsCreated, added: result.repositoriesAdded, skipped: result.repositoriesSkipped, globals: result.globalCommandsAdded }), { tone: "success", duration: 6000 })
           workspaceStore.setWorkspace(await repositoryApi.workspace())
         }
         return result
@@ -77,6 +87,11 @@ export function useRepositoryActions() {
       runScript: async (repo: Repository, script: string) => trackRun(await guard(() => repositoryApi.runScript(repo.id, script))),
       runCommand: async (repo: Repository, command: string) => trackRun(await guard(() => repositoryApi.runCommand(repo.id, command))),
       stop: (runId: string) => guard(() => repositoryApi.stopProcess(runId)),
+      /** Sends one line to a running process's stdin; true when delivered. */
+      sendInput: async (runId: string, text: string, secret = false) =>
+        (await guard(async () => { await repositoryApi.sendInput(runId, text, secret); return true })) ?? false,
+      /** Closes a running process's stdin (EOF). */
+      closeInput: (runId: string) => guard(() => repositoryApi.closeInput(runId)),
       restart: async (runId: string) => trackRun(await guard(() => repositoryApi.restartProcess(runId))),
       stopRepository: (repo: Repository) => guard(() => repositoryApi.stopRepository(repo.id)),
       async saveSequence(repo: Repository, steps: CommandStep[], quiet = false) {
@@ -86,6 +101,14 @@ export function useRepositoryActions() {
         })
         if (ok && !quiet) notify(t.sequence.saved, { tone: "success" })
         return ok
+      },
+      /** Replaces the workspace's global commands; true when saved. */
+      async saveGlobalCommands(commands: GlobalCommand[]) {
+        const saved = await guard(() => repositoryApi.saveGlobalCommands(commands))
+        if (!saved) return false
+        workspaceStore.setWorkspace(await repositoryApi.workspace())
+        notify(t.globalCommands.saved, { tone: "success" })
+        return true
       },
       async runSequence(repo: Repository) {
         const sequence = await guard(() => repositoryApi.runSequence(repo.id))

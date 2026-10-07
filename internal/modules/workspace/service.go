@@ -123,6 +123,9 @@ func normalize(state *domain.Workspace) {
 	if state.Repositories == nil {
 		state.Repositories = []domain.Repository{}
 	}
+	if state.GlobalCommands == nil {
+		state.GlobalCommands = []domain.GlobalCommand{}
+	}
 	if len(state.Groups) == 0 {
 		state.Groups = []domain.Group{{ID: uuid.NewString(), Name: defaultGroupName}}
 	}
@@ -430,6 +433,69 @@ func (s *Service) AssignRepository(id, groupID string) error {
 	return nil
 }
 
+// MaxGlobalCommandName bounds global command names.
+const MaxGlobalCommandName = 200
+
+// GlobalCommand returns the global command with the given ID.
+func (s *Service) GlobalCommand(id string) (domain.GlobalCommand, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, cmd := range s.state.GlobalCommands {
+		if cmd.ID == id {
+			return cmd, true
+		}
+	}
+	return domain.GlobalCommand{}, false
+}
+
+// SaveGlobalCommands replaces the workspace's global commands. Names and
+// commands are trimmed and must be non-empty, single-line, and names must
+// be unique (case-insensitively). Commands missing an ID receive one.
+// Sequence steps referencing a removed command are left as they are; they
+// fail with a clear error when run.
+func (s *Service) SaveGlobalCommands(commands []domain.GlobalCommand) ([]domain.GlobalCommand, error) {
+	clean, err := CleanGlobalCommands(commands)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.GlobalCommands = clean
+	return append([]domain.GlobalCommand{}, clean...), nil
+}
+
+// CleanGlobalCommands validates and normalizes a list of global commands.
+func CleanGlobalCommands(commands []domain.GlobalCommand) ([]domain.GlobalCommand, error) {
+	clean := make([]domain.GlobalCommand, 0, len(commands))
+	ids := map[string]bool{}
+	names := map[string]bool{}
+	for i, cmd := range commands {
+		cmd.Name = strings.TrimSpace(cmd.Name)
+		cmd.Command = strings.TrimSpace(cmd.Command)
+		switch {
+		case cmd.Name == "":
+			return nil, fmt.Errorf("global command %d: name cannot be empty", i+1)
+		case len(cmd.Name) > MaxGlobalCommandName:
+			return nil, fmt.Errorf("global command %q: name is longer than %d characters", cmd.Name, MaxGlobalCommandName)
+		case cmd.Command == "":
+			return nil, fmt.Errorf("global command %q: command cannot be empty", cmd.Name)
+		case strings.ContainsAny(cmd.Name+cmd.Command, "\r\n\x00"):
+			return nil, fmt.Errorf("global command %q: line breaks are not allowed", cmd.Name)
+		}
+		key := strings.ToLower(cmd.Name)
+		if names[key] {
+			return nil, fmt.Errorf("global command name %q is used more than once", cmd.Name)
+		}
+		names[key] = true
+		if cmd.ID == "" || ids[cmd.ID] {
+			cmd.ID = uuid.NewString()
+		}
+		ids[cmd.ID] = true
+		clean = append(clean, cmd)
+	}
+	return clean, nil
+}
+
 // UpdateCommandSequence replaces a repository's ordered steps. Steps without
 // an ID receive one; blank labels are derived from the step content.
 func (s *Service) UpdateCommandSequence(id string, steps []domain.CommandStep) error {
@@ -438,7 +504,14 @@ func (s *Service) UpdateCommandSequence(id string, steps []domain.CommandStep) e
 	for _, step := range steps {
 		step.Label = strings.TrimSpace(step.Label)
 		step.Script = strings.TrimSpace(step.Script)
+		step.GlobalCommand = strings.TrimSpace(step.GlobalCommand)
 		step.Command = strings.TrimSpace(step.Command)
+		// A step has exactly one kind; script wins, then global command.
+		if step.Script != "" {
+			step.GlobalCommand, step.Command = "", ""
+		} else if step.GlobalCommand != "" {
+			step.Command = ""
+		}
 		if step.ID == "" || seen[step.ID] {
 			step.ID = uuid.NewString()
 		}
@@ -447,6 +520,10 @@ func (s *Service) UpdateCommandSequence(id string, steps []domain.CommandStep) e
 			switch {
 			case step.Script != "":
 				step.Label = step.Script
+			case step.GlobalCommand != "":
+				if cmd, ok := s.GlobalCommand(step.GlobalCommand); ok {
+					step.Label = cmd.Name
+				}
 			case step.Command != "":
 				step.Label = step.Command
 			}

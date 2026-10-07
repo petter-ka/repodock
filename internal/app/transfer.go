@@ -63,6 +63,9 @@ func (a *App) ApplyImport(path string, options domain.ImportOptions) (domain.Imp
 	if err != nil {
 		return domain.ImportResult{}, err
 	}
+	if err := a.validateOverrides(options.PathOverrides); err != nil {
+		return domain.ImportResult{}, err
+	}
 	var added []string
 	var result domain.ImportResult
 	a.workspace.Update(func(ws *domain.Workspace) {

@@ -1,4 +1,4 @@
-import { Cpu, Eraser, Layers, MemoryStick, RotateCcw, Square, X } from "lucide-react"
+import { Cpu, Eraser, Keyboard, Layers, MemoryStick, RotateCcw, Square, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -6,6 +6,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { cn, formatBytes, formatDuration } from "@/lib/utils"
 import { isActive, isZeroTime, type ProcessSnapshot, type Run } from "../domain"
+import { processStore } from "../store/processStore"
 import { runStatusDot, runStatusVariant } from "./status"
 
 /** Re-renders every second while any run is active so durations tick. */
@@ -54,12 +55,13 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
           const active = isActive(run.status)
           const end = active || isZeroTime(run.endedAt) ? now : new Date(run.endedAt).getTime()
           const selected = selectedRunId === run.id
+          const waiting = processStore.prompt(run.id) !== undefined
           return (
             <div
               key={run.id}
               className={cn(
                 "group/card relative w-[290px] shrink-0 rounded-xl border bg-background p-3 transition",
-                selected ? "border-primary ring-1 ring-primary/40" : "border-border hover:border-primary/40",
+                selected ? "border-primary ring-1 ring-primary/40" : waiting ? "border-warning/70" : "border-border hover:border-primary/40",
                 !active && "opacity-80",
               )}
             >
@@ -74,6 +76,7 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-sm font-medium">{run.label}</span>
+                    {waiting && <Badge variant="warning" className="px-1.5 text-[10px]"><Keyboard className="size-2.5" />{t.input.waiting}</Badge>}
                     {run.sequenceId && <Badge variant="outline" className="px-1.5 text-[10px]"><Layers className="size-2.5" />{t.process.fromSequence}</Badge>}
                   </div>
                   <div className="truncate font-mono text-[11px] text-muted-foreground" title={run.command}>

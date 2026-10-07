@@ -162,3 +162,128 @@ func TestDuplicatePathsInsideFile(t *testing.T) {
 		t.Fatalf("added = %v", added)
 	}
 }
+
+func TestMergeAppliesPathOverrides(t *testing.T) {
+	doc := Document{Format: Format, Version: 1, Groups: []DocumentGroup{
+		{Name: "A", Repositories: []DocumentRepository{{Name: "api", Path: "/elsewhere/api"}, {Name: "web", Path: "~/web"}}},
+	}}
+	moved := filepath.Join(home, "src", "api")
+	opts := domain.ImportOptions{PathOverrides: map[string]string{
+		filepath.FromSlash("/elsewhere/api"): moved,
+		filepath.Join(home, "web"):           "  ", // blank override = keep original
+	}}
+	merged, _, _ := Merge(doc, domain.Workspace{}, env(), opts)
+	if merged.Repositories[0].Path != moved {
+		t.Fatalf("override not applied: %q", merged.Repositories[0].Path)
+	}
+	if merged.Repositories[1].Path != filepath.Join(home, "web") {
+		t.Fatalf("blank override must keep the original: %q", merged.Repositories[1].Path)
+	}
+
+	// An override onto an already registered folder is skipped like any duplicate.
+	current := domain.Workspace{Repositories: []domain.Repository{{ID: "x", Path: moved}}}
+	_, _, result := Merge(doc, current, env(), opts)
+	if result.RepositoriesSkipped != 1 || result.RepositoriesAdded != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func withGlobals() domain.Workspace {
+	ws := sample()
+	ws.GlobalCommands = []domain.GlobalCommand{{ID: "gc1", Name: "Install", Command: "npm ci"}, {ID: "gc2", Name: "Unused", Command: "echo"}}
+	ws.Repositories[1].CommandSequence = append(ws.Repositories[1].CommandSequence, domain.CommandStep{ID: "s3", Label: "Install", GlobalCommand: "gc1", Enabled: true})
+	return ws
+}
+
+func TestBuildIncludesGlobalCommands(t *testing.T) {
+	full, _ := Build(withGlobals(), nil, home, time.Now())
+	if full.Version != Version || len(full.GlobalCommands) != 2 {
+		t.Fatalf("a full export carries every global command: %+v", full.GlobalCommands)
+	}
+	partial, _ := Build(withGlobals(), []string{"g2"}, home, time.Now())
+	if len(partial.GlobalCommands) != 1 || partial.GlobalCommands[0].ID != "gc1" {
+		t.Fatalf("a partial export carries only used global commands: %+v", partial.GlobalCommands)
+	}
+	none, _ := Build(withGlobals(), []string{"g1"}, home, time.Now())
+	data, _ := Encode(none)
+	if strings.Contains(string(data), "globalCommands") {
+		t.Fatal("unused global commands must be omitted")
+	}
+	parsed, err := Parse(mustEncode(t, full))
+	if err != nil || len(parsed.GlobalCommands) != 2 {
+		t.Fatalf("parsed = %+v, %v", parsed.GlobalCommands, err)
+	}
+}
+
+func mustEncode(t *testing.T, doc Document) []byte {
+	t.Helper()
+	data, err := Encode(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestParseRejectsInvalidGlobalCommands(t *testing.T) {
+	step := func(ref string) string {
+		return `{"name":"A","repositories":[{"name":"x","path":"/x","commandSequence":[{"id":"1","label":"x","script":"","globalCommand":"` + ref + `","command":"","enabled":true,"background":false}]}]}`
+	}
+	cases := map[string]string{
+		"v1 with globals":  `{"format":"repodock.workspace-export","version":1,"globalCommands":[{"id":"a","name":"n","command":"c"}],"groups":[]}`,
+		"unknown ref":      `{"format":"repodock.workspace-export","version":2,"globalCommands":[{"id":"a","name":"n","command":"c"}],"groups":[` + step("b") + `]}`,
+		"empty command":    `{"format":"repodock.workspace-export","version":2,"globalCommands":[{"id":"a","name":"n","command":" "}],"groups":[]}`,
+		"duplicate name":   `{"format":"repodock.workspace-export","version":2,"globalCommands":[{"id":"a","name":"n","command":"c"},{"id":"b","name":"N","command":"c"}],"groups":[]}`,
+		"duplicate id":     `{"format":"repodock.workspace-export","version":2,"globalCommands":[{"id":"a","name":"n","command":"c"},{"id":"a","name":"m","command":"c"}],"groups":[]}`,
+		"multiline global": `{"format":"repodock.workspace-export","version":2,"globalCommands":[{"id":"a","name":"n","command":"c\nrm -rf /"}],"groups":[]}`,
+	}
+	for name, input := range cases {
+		if _, err := Parse([]byte(input)); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+	ok := `{"format":"repodock.workspace-export","version":2,"globalCommands":[{"id":"a","name":"n","command":"c"}],"groups":[` + step("a") + `]}`
+	if _, err := Parse([]byte(ok)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMergeGlobalCommands(t *testing.T) {
+	doc, _ := Build(withGlobals(), nil, home, time.Now())
+	doc.GlobalCommands = append(doc.GlobalCommands, domain.GlobalCommand{ID: "gc3", Name: "Build", Command: "npm run build"})
+	current := domain.Workspace{GlobalCommands: []domain.GlobalCommand{
+		{ID: "mine-install", Name: "install", Command: "npm ci"},            // identical (name case differs) → reused
+		{ID: "mine-unused", Name: "Unused", Command: "echo something else"}, // name clash → renamed copy
+		{ID: "mine-taken", Name: "Unused (imported)", Command: "x"},
+	}}
+
+	preview := Plan(doc, current, env())
+	statuses := map[string]domain.ImportGlobalCommandPreview{}
+	for _, g := range preview.GlobalCommands {
+		statuses[g.ID] = g
+	}
+	if statuses["gc1"].Status != domain.ImportGlobalExisting || statuses["gc2"].Status != domain.ImportGlobalRenamed ||
+		statuses["gc2"].ImportName != "Unused (imported 2)" || statuses["gc3"].Status != domain.ImportGlobalNew {
+		t.Fatalf("preview = %+v", preview.GlobalCommands)
+	}
+	// Two new global commands plus no inline commands in added repos besides "migrate".
+	if preview.ShellCommands != 3 {
+		t.Fatalf("shell commands = %d", preview.ShellCommands)
+	}
+	if steps := preview.Groups[1].Repositories[0].Steps; steps[1].GlobalCommand != "gc1" {
+		t.Fatalf("preview steps keep document IDs: %+v", steps)
+	}
+
+	merged, _, result := Merge(doc, current, env(), domain.ImportOptions{})
+	if result.GlobalCommandsAdded != 2 || len(merged.GlobalCommands) != 5 || len(current.GlobalCommands) != 3 {
+		t.Fatalf("result = %+v globals = %+v", result, merged.GlobalCommands)
+	}
+	var api domain.Repository
+	for _, r := range merged.Repositories {
+		if r.Name == "api" {
+			api = r
+		}
+	}
+	if api.CommandSequence[1].GlobalCommand != "mine-install" {
+		t.Fatalf("references must be remapped to local IDs: %+v", api.CommandSequence)
+	}
+}

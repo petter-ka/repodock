@@ -1,6 +1,6 @@
 import { getBackend } from "@/lib/bridge"
 import type { EventMap } from "@/lib/contracts"
-import type { CommandStep, GroupRunMode, ImportOptions } from "./domain"
+import type { CommandStep, GlobalCommand, GroupRunMode, ImportOptions } from "./domain"
 
 const api = () => getBackend().api
 
@@ -12,6 +12,8 @@ export const repositoryApi = {
   addRepository: (path: string, groupID = "") => api().AddRepository(path, groupID),
   refreshRepository: (id: string) => api().RefreshRepository(id),
   refreshAll: () => api().RefreshAll(),
+  checkFolder: (path: string) => api().CheckRepositoryFolder(path),
+  relocateRepository: (id: string, path: string) => api().RelocateRepository(id, path),
   removeRepository: (id: string) => api().RemoveRepository(id),
   createGroup: (name: string) => api().CreateGroup(name),
   renameGroup: (id: string, name: string) => api().RenameGroup(id, name),
@@ -27,9 +29,12 @@ export const repositoryApi = {
   previewImport: (path: string) => api().PreviewImport(path),
   applyImport: (path: string, options: ImportOptions) => api().ApplyImport(path, options),
   saveCommandSequence: (repoID: string, steps: CommandStep[]) => api().SaveCommandSequence(repoID, steps),
+  saveGlobalCommands: (commands: GlobalCommand[]) => api().SaveGlobalCommands(commands),
   runScript: (repoID: string, scriptName: string) => api().RunScript(repoID, scriptName, scriptName),
   runCommand: (repoID: string, command: string, label = "") => api().RunCommand(repoID, command, label),
   stopProcess: (runID: string) => api().StopProcess(runID),
+  sendInput: (runID: string, text: string, secret: boolean) => api().SendInput(runID, text, secret),
+  closeInput: (runID: string) => api().CloseInput(runID),
   restartProcess: (runID: string) => api().RestartProcess(runID),
   stopRepository: (repoID: string) => api().StopRepository(repoID),
   runs: () => api().Runs(),

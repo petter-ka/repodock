@@ -5,6 +5,10 @@
 ```text
 Workspace
 ├── version
+├── globalCommands[]          # reusable shell commands — see ADR-0012
+│   ├── id
+│   ├── name                  # unique, case-insensitive
+│   └── command               # single-line shell text
 ├── groups[]
 │   ├── id
 │   ├── name
@@ -20,7 +24,8 @@ Workspace
     ├── commandSequence[]     # null = never configured
     │   ├── id, label
     │   ├── script            # package script name (resolved at run time)
-    │   ├── command           # shell text (used when script is empty)
+    │   ├── globalCommand     # global command ID (used when script is empty; resolved at run time)
+    │   ├── command           # shell text (used when script and globalCommand are empty)
     │   ├── enabled
     │   └── background        # start and continue without waiting
     ├── envFiles[]            # discovered allow-listed .env* names
@@ -37,6 +42,7 @@ Location: `<user config dir>/RepoDock/workspace.json`, overridable with `REPODOC
 - Every repository belongs to exactly one existing group; `groupId` and `repositoryIds` agree.
 - Slices are never `null` except `commandSequence`, where `null` means "never configured".
 - A missing or unknown `runMode` is normalized to `sequential` (additive field; no version bump).
+- A missing `globalCommands` is normalized to `[]` (additive field; no version bump).
 
 ## Stability rules
 
@@ -48,15 +54,16 @@ IDs are UUIDs and remain stable across refreshes. Scripts are refreshed from `pa
 - A file that cannot be decoded, or has a newer `version` than supported, is moved to `workspace.json.corrupt-<timestamp>` and the app starts with an empty workspace; the frontend shows a persistent notice.
 - Older versions are copied to `workspace.json.v<N>.bak` before the one-way migration runs.
 
-## Export document (version 1)
+## Export document (version 2)
 
 A separate, shareable format written by "Export" and read by "Import" (ADR-0011). It is not the persisted workspace.
 
 ```text
 ExportDocument
 ├── format              # always "repodock.workspace-export"
-├── version             # 1
+├── version             # 2 (version 1 files, without globalCommands, are still read)
 ├── exportedAt
+├── globalCommands[]    # optional; { id, name, command } — id is document-local
 └── groups[]
     ├── name            # matched case-insensitively on import
     ├── runMode
@@ -64,7 +71,8 @@ ExportDocument
     └── repositories[]
         ├── name
         ├── path        # forward slashes; "~/" = home folder; matched on import
-        └── commandSequence[]   # same shape as the workspace; null = never configured
+        └── commandSequence[]   # same shape as the workspace; null = never configured;
+                                # step globalCommand references globalCommands[].id
 ```
 
 Excluded on purpose: internal IDs, scripts, package manager, env file names and contents, refresh timestamps, problems.

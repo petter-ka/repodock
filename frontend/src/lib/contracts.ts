@@ -6,8 +6,10 @@ export type Script = { name: string; command: string }
 export type CommandStep = {
   id: string
   label: string
-  /** package.json script name; takes precedence over command */
+  /** package.json script name; takes precedence over globalCommand and command */
   script: string
+  /** ID of a workspace global command; takes precedence over command */
+  globalCommand: string
   /** shell text; empty together with script means a no-op step */
   command: string
   enabled: boolean
@@ -33,7 +35,10 @@ export type GroupRunMode = "sequential" | "parallel"
 
 export type Group = { id: string; name: string; repositoryIds: string[]; collapsed: boolean; runMode: GroupRunMode }
 
-export type Workspace = { version: number; groups: Group[]; repositories: Repository[] }
+/** Reusable shell command shared by every repository's sequence. */
+export type GlobalCommand = { id: string; name: string; command: string }
+
+export type Workspace = { version: number; groups: Group[]; repositories: Repository[]; globalCommands: GlobalCommand[] }
 
 export type RunStatus = "queued" | "starting" | "running" | "stopping" | "exited" | "failed" | "stopped" | "skipped"
 
@@ -55,8 +60,11 @@ export type ProcessOutput = {
   runId: string
   repositoryId: string
   pid: number
-  stream: "stdout" | "stderr"
+  /** "stdin" is the echo of input sent with SendInput */
+  stream: "stdout" | "stderr" | "stdin"
   text: string
+  /** unterminated line shown after output paused — usually a prompt */
+  partial: boolean
   seq: number
   timestamp: string
 }
@@ -101,19 +109,45 @@ export type GroupRun = {
 
 export type ImportStatus = "new" | "missing" | "existing" | "duplicate"
 export type ImportRepositoryPreview = { name: string; path: string; status: ImportStatus; steps: CommandStep[] | null }
+export type ImportGlobalCommandStatus = "new" | "existing" | "renamed"
+export type ImportGlobalCommandPreview = {
+  /** document-local ID referenced by preview steps */
+  id: string
+  name: string
+  command: string
+  status: ImportGlobalCommandStatus
+  /** name after import (differs from name when renamed) */
+  importName: string
+}
 export type ImportGroupPreview = { name: string; exists: boolean; repositories: ImportRepositoryPreview[] }
 export type ImportPreview = {
   path: string
   exportedAt: string
   groups: ImportGroupPreview[]
+  globalCommands: ImportGlobalCommandPreview[] | null
   groupsToCreate: number
   new: number
   existing: number
   missing: number
   shellCommands: number
 }
-export type ImportOptions = { keepStepsEnabled: boolean }
-export type ImportResult = { groupsCreated: number; repositoriesAdded: number; repositoriesSkipped: number }
+export type ImportOptions = {
+  keepStepsEnabled: boolean
+  /** preview path → replacement folder chosen by the user */
+  pathOverrides?: Record<string, string>
+}
+
+export type FolderCheck = {
+  path: string
+  exists: boolean
+  /** folder contains a readable package.json */
+  valid: boolean
+  name: string
+  problem: string
+  registeredId: string
+  registeredName: string
+}
+export type ImportResult = { groupsCreated: number; globalCommandsAdded: number; repositoriesAdded: number; repositoriesSkipped: number }
 
 export type StartupReport = { workspacePath: string; recoveredBackup: string; warnings: string[] }
 
@@ -125,6 +159,8 @@ export type AppBinding = {
   AddRepository(path: string, groupID: string): Promise<Repository>
   RefreshRepository(id: string): Promise<Repository>
   RefreshAll(): Promise<void>
+  CheckRepositoryFolder(path: string): Promise<FolderCheck>
+  RelocateRepository(id: string, path: string): Promise<Repository>
   RemoveRepository(id: string): Promise<void>
   CreateGroup(name: string): Promise<Group>
   RenameGroup(id: string, name: string): Promise<void>
@@ -140,10 +176,13 @@ export type AppBinding = {
   PreviewImport(path: string): Promise<ImportPreview>
   ApplyImport(path: string, options: ImportOptions): Promise<ImportResult>
   SaveCommandSequence(repoID: string, steps: CommandStep[]): Promise<void>
+  SaveGlobalCommands(commands: GlobalCommand[]): Promise<GlobalCommand[]>
   RunScript(repoID: string, scriptName: string, label: string): Promise<Run>
   RunCommand(repoID: string, command: string, label: string): Promise<Run>
   WaitForRun(runID: string): Promise<Run>
   StopProcess(runID: string): Promise<void>
+  SendInput(runID: string, text: string, secret: boolean): Promise<void>
+  CloseInput(runID: string): Promise<void>
   RestartProcess(runID: string): Promise<Run>
   StopRepository(repoID: string): Promise<void>
   ActiveRuns(): Promise<Run[]>

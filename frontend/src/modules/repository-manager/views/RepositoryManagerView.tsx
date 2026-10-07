@@ -8,6 +8,7 @@ import { modLabel, useShortcuts } from "@/lib/keyboard"
 import { CommandInput } from "../components/CommandInput"
 import { ConsoleView } from "../components/ConsoleView"
 import { EnvSheet } from "../components/EnvSheet"
+import { ProcessInput } from "../components/ProcessInput"
 import { ProcessStrip } from "../components/ProcessStrip"
 import { RepoHeader } from "../components/RepoHeader"
 import { RepoSidebar } from "../components/RepoSidebar"
@@ -85,6 +86,7 @@ function RepositoryPane({ repo, actions, commandRef }: {
         onSequence={() => setSheet("sequence")}
         onEnvironment={() => setSheet("env")}
         onStopAll={() => void actions.stopRepository(repo)}
+        onRelocate={() => void actions.relocate(repo)}
       />
       <ScriptChips repo={repo} runningLabels={runningLabels} onRun={(script) => void actions.runScript(repo, script).then((run) => run && setSelectedRunId(null))} />
       <CommandInput ref={commandRef} repo={repo} onRun={(command) => void actions.runCommand(repo, command)} />
@@ -99,6 +101,7 @@ function RepositoryPane({ repo, actions, commandRef }: {
         onClearFinished={() => processStore.clearFinished(repo.id)}
       />
       <ConsoleView repositoryId={repo.id} runs={runs} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} onClear={() => processStore.clearOutput(repo.id)} />
+      <ProcessInput runs={runs} selectedRunId={selectedRunId} actions={actions} />
       <SequenceSheet repo={repo} open={sheet === "sequence"} sequence={sequence} actions={actions} onOpenChange={(open) => setSheet(open ? "sequence" : null)} />
       <EnvSheet repo={repo} open={sheet === "env"} actions={actions} onOpenChange={(open) => setSheet(open ? "env" : null)} />
     </>
@@ -161,6 +164,7 @@ function OverviewPane({ actions }: { actions: ReturnType<typeof useRepositoryAct
         onDismiss={(id) => processStore.dismissRun(id)}
       />
       <ConsoleView runs={runs} repoNames={repoNames} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} onClear={() => processStore.clearOutput()} />
+      <ProcessInput runs={runs} selectedRunId={selectedRunId} repoNames={repoNames} actions={actions} />
     </>
   )
 }

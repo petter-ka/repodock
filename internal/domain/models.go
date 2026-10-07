@@ -53,19 +53,33 @@ type Workspace struct {
 	Version      int          `json:"version"`
 	Groups       []Group      `json:"groups"`
 	Repositories []Repository `json:"repositories"`
+	// GlobalCommands are reusable shell commands that any repository's
+	// sequence can reference by ID (ADR-0012).
+	GlobalCommands []GlobalCommand `json:"globalCommands"`
+}
+
+// GlobalCommand is a named shell command shared by the whole workspace. It
+// runs in the folder of the repository whose sequence references it.
+type GlobalCommand struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
 }
 
 // CommandStep is one entry of a repository's ordered command sequence.
 //
 // Resolution order: a non-empty Script runs that package.json script through
-// the repository package manager; otherwise Command runs as shell text; when
-// both are empty the step is a deliberate no-op (ADR-0006).
+// the repository package manager; otherwise a non-empty GlobalCommand runs
+// the referenced workspace global command; otherwise Command runs as shell
+// text; when all are empty the step is a deliberate no-op (ADR-0006).
 type CommandStep struct {
-	ID      string `json:"id"`
-	Label   string `json:"label"`
-	Script  string `json:"script"`
-	Command string `json:"command"`
-	Enabled bool   `json:"enabled"`
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Script string `json:"script"`
+	// GlobalCommand is the ID of a Workspace.GlobalCommands entry.
+	GlobalCommand string `json:"globalCommand"`
+	Command       string `json:"command"`
+	Enabled       bool   `json:"enabled"`
 	// Background steps are started and the sequence continues without waiting
 	// for them to exit (typical for dev servers and watchers).
 	Background bool `json:"background"`
@@ -119,8 +133,13 @@ type ProcessOutput struct {
 	RunID        string `json:"runId"`
 	RepositoryID string `json:"repositoryId"`
 	PID          int    `json:"pid"`
-	Stream       string `json:"stream"`
-	Text         string `json:"text"`
+	// Stream is "stdout", "stderr", or "stdin" for the echo of input the
+	// user sent to the process.
+	Stream string `json:"stream"`
+	Text   string `json:"text"`
+	// Partial marks an unterminated line emitted after output went quiet,
+	// typically an interactive prompt waiting for input.
+	Partial bool `json:"partial"`
 	// Seq is a monotonically increasing sequence number across all runs so
 	// the frontend can order lines that arrive in separate batches.
 	Seq       uint64    `json:"seq"`
@@ -220,6 +239,25 @@ type ImportRepositoryPreview struct {
 	Steps  []CommandStep `json:"steps"`
 }
 
+// ImportGlobalCommandStatus describes what importing one global command does.
+type ImportGlobalCommandStatus string
+
+const (
+	ImportGlobalNew      ImportGlobalCommandStatus = "new"      // will be added
+	ImportGlobalExisting ImportGlobalCommandStatus = "existing" // same name and command already present; reused
+	ImportGlobalRenamed  ImportGlobalCommandStatus = "renamed"  // name taken by a different command; added under ImportName
+)
+
+type ImportGlobalCommandPreview struct {
+	// ID is the document-local ID that preview steps reference.
+	ID      string                    `json:"id"`
+	Name    string                    `json:"name"`
+	Command string                    `json:"command"`
+	Status  ImportGlobalCommandStatus `json:"status"`
+	// ImportName is the name the command will have after import.
+	ImportName string `json:"importName"`
+}
+
 type ImportGroupPreview struct {
 	Name         string                    `json:"name"`
 	Exists       bool                      `json:"exists"`
@@ -228,15 +266,17 @@ type ImportGroupPreview struct {
 
 // ImportPreview is shown to the user before an import is applied.
 type ImportPreview struct {
-	Path           string               `json:"path"`
-	ExportedAt     time.Time            `json:"exportedAt"`
-	Groups         []ImportGroupPreview `json:"groups"`
-	GroupsToCreate int                  `json:"groupsToCreate"`
-	New            int                  `json:"new"`
-	Existing       int                  `json:"existing"`
-	Missing        int                  `json:"missing"`
+	Path           string                       `json:"path"`
+	ExportedAt     time.Time                    `json:"exportedAt"`
+	Groups         []ImportGroupPreview         `json:"groups"`
+	GlobalCommands []ImportGlobalCommandPreview `json:"globalCommands"`
+	GroupsToCreate int                          `json:"groupsToCreate"`
+	New            int                          `json:"new"`
+	Existing       int                          `json:"existing"`
+	Missing        int                          `json:"missing"`
 	// ShellCommands counts free-form command steps in repositories that
-	// will be added, so the UI can ask for an explicit review.
+	// will be added plus global commands that will be added, so the UI can
+	// ask for an explicit review.
 	ShellCommands int `json:"shellCommands"`
 }
 
@@ -244,10 +284,29 @@ type ImportOptions struct {
 	// KeepStepsEnabled preserves each step's enabled flag; by default all
 	// imported steps are disabled until the user reviews them.
 	KeepStepsEnabled bool `json:"keepStepsEnabled"`
+	// PathOverrides maps a repository path shown in the preview to the
+	// folder the user picked instead (e.g. when the original is missing).
+	PathOverrides map[string]string `json:"pathOverrides"`
+}
+
+// FolderCheck describes whether a folder can be used as a repository.
+type FolderCheck struct {
+	// Path is the absolute, cleaned folder path.
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+	// Valid is true when the folder contains a readable package.json.
+	Valid bool   `json:"valid"`
+	Name  string `json:"name"`
+	// Problem explains why the folder is not valid.
+	Problem string `json:"problem"`
+	// RegisteredID is set when another repository already uses this path.
+	RegisteredID   string `json:"registeredId"`
+	RegisteredName string `json:"registeredName"`
 }
 
 type ImportResult struct {
 	GroupsCreated       int `json:"groupsCreated"`
+	GlobalCommandsAdded int `json:"globalCommandsAdded"`
 	RepositoriesAdded   int `json:"repositoriesAdded"`
 	RepositoriesSkipped int `json:"repositoriesSkipped"`
 }

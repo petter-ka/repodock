@@ -278,7 +278,7 @@ func TestArgvIsQuotedForTheShell(t *testing.T) {
 
 func TestLineWriter(t *testing.T) {
 	var got []string
-	w := newLineWriter(func(s string) { got = append(got, s) })
+	w := newLineWriter(func(s string, _ bool) { got = append(got, s) }, 0)
 	_, _ = w.Write([]byte("a\r"))
 	_, _ = w.Write([]byte("\nprogress 10%\rprogress 90%\rdone\nlast"))
 	w.Flush()

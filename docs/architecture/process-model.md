@@ -48,17 +48,23 @@ The PATH is resolved once per app launch: after installing a new Node version ma
 ## Output
 
 Output is line-oriented. Stdout/stderr are captured through writers (not pipes read concurrently with `Wait`), split on `
-`, with bare `` resetting the current line (progress bars) and lines capped at 16 KiB. Lines are coalesced into `process:output-batch` events every ~50 ms. All output of a run is flushed before its `process:exited` event. Each line contains:
+`, with bare `
+` resetting the current line (progress bars) and lines capped at 16 KiB. Lines are coalesced into `process:output-batch` events every ~50 ms. All output of a run is flushed before its `process:exited` event. Each line contains:
 
 - run ID
 - repository ID
 - process PID when available
-- stream: stdout/stderr
+- stream: stdout/stderr, or stdin for the echo of input sent by the user
+- partial: true for an unterminated line emitted after 250 ms of silence (a prompt); carriage-return redraws are never flushed early
 - global sequence number
 - timestamp
 - text
 
 Long-term, a raw byte stream may be added for terminal-grade behavior.
+
+## Standard input
+
+Every run has a stdin pipe that stays open until the process exits (ADR-0013). `SendInput` writes one line as data (never shell text), serialized per run with a 3 s timeout; `CloseInput` sends EOF. Input is echoed to the console as a `stdin` line, masked when marked secret, and never logged.
 
 ## Process termination
 

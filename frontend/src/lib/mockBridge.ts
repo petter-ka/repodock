@@ -3,7 +3,7 @@
 // sequences; it never touches the real filesystem.
 import type { Backend } from "./bridge"
 import type {
-  AppBinding, CommandStep, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
+  AppBinding, CommandStep, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
 } from "./contracts"
 
 const ZERO = "0001-01-01T00:00:00Z"
@@ -14,7 +14,7 @@ function seedWorkspace(): Workspace {
   const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[]): Repository => ({
     id, name, path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
     scripts: scripts.map(([n, command]) => ({ name: n, command })),
-    commandSequence: scripts.map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, command: "", enabled: n === "dev", background: n === "dev" })),
+    commandSequence: scripts.map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, globalCommand: "", command: "", enabled: n === "dev", background: n === "dev" })),
   })
   return {
     version: 1,
@@ -26,6 +26,10 @@ function seedWorkspace(): Workspace {
       repo("r-web", "dashboard-web", "pnpm", "g-frontend", [["dev", "next dev --turbo"], ["build", "next build"], ["lint", "next lint"], ["test", "vitest run"]], [".env", ".env.local"]),
       repo("r-docs", "docs-site", "npm", "g-frontend", [["dev", "astro dev"], ["build", "astro build"]], []),
       repo("r-api", "identity-api", "yarn", "g-services", [["start:dev", "nest start --watch"], ["test", "jest"], ["migrate", "prisma migrate deploy"]], [".env", ".env.test"]),
+    ],
+    globalCommands: [
+      { id: "gc-clean", name: "Clean install", command: "npx rimraf node_modules && npm ci" },
+      { id: "gc-outdated", name: "Outdated", command: "npm outdated" },
     ],
   }
 }
@@ -58,6 +62,7 @@ export function createMockBackend(): Backend {
     format: string
     version: number
     exportedAt: string
+    globalCommands?: GlobalCommand[]
     groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; path: string; commandSequence: CommandStep[] | null }> }>
   }
   const parseExport = (path: string): ExportDoc => {
@@ -66,11 +71,31 @@ export function createMockBackend(): Backend {
     let doc: ExportDoc
     try { doc = JSON.parse(text) } catch (error) { throw `not a valid RepoDock export: ${error}` }
     if (doc.format !== "repodock.workspace-export") throw `not a RepoDock export (format "${doc.format}")`
-    if (doc.version !== 1) throw `export version ${doc.version} is not supported`
+    if (doc.version !== 1 && doc.version !== 2) throw `export version ${doc.version} is not supported`
     return doc
   }
+  // Simulated filesystem: folders under C:/work/ exist unless the path says "missing".
+  const folderExists = (path: string) => /^[A-Za-z]:[\\/]work[\\/]/.test(path) && !/missing/i.test(path)
   const findGroupByName = (name: string) => workspace.groups.find((g) => g.name.trim().toLowerCase() === name.trim().toLowerCase())
   const findRepoByPath = (path: string) => workspace.repositories.find((r) => r.path.toLowerCase() === path.toLowerCase())
+  // Mirrors transfer.planGlobals: reuse identical commands, rename on name clashes.
+  const planGlobals = (doc: ExportDoc) => {
+    const taken = new Set(workspace.globalCommands.map((g) => g.name.trim().toLowerCase()))
+    return (doc.globalCommands ?? []).map((cmd) => {
+      const name = cmd.name.trim()
+      const same = workspace.globalCommands.find((g) => g.name.trim().toLowerCase() === name.toLowerCase() && g.command.trim() === cmd.command.trim())
+      if (same) return { doc: cmd, status: "existing" as const, name: same.name, localId: same.id }
+      let local = name
+      if (taken.has(name.toLowerCase())) {
+        for (let n = 1; ; n++) {
+          local = n === 1 ? `${name} (imported)` : `${name} (imported ${n})`
+          if (!taken.has(local.toLowerCase())) break
+        }
+      }
+      taken.add(local.toLowerCase())
+      return { doc: cmd, status: local === name ? "new" as const : "renamed" as const, name: local, localId: "" }
+    })
+  }
   let seq = 0
 
   const emit = <K extends keyof EventMap>(event: K, payload: EventMap[K]) => {
@@ -87,8 +112,8 @@ export function createMockBackend(): Backend {
     const { id, repositoryId, command, label, status, pid, exitCode, startedAt, endedAt, sequenceId, stepId } = run
     return { id, repositoryId, command, label, status, pid, exitCode, startedAt, endedAt, sequenceId, stepId }
   }
-  const line = (run: Run, text: string, stream: "stdout" | "stderr" = "stdout"): ProcessOutput =>
-    ({ runId: run.id, repositoryId: run.repositoryId, pid: run.pid, stream, text, seq: ++seq, timestamp: now() })
+  const line = (run: Run, text: string, stream: "stdout" | "stderr" = "stdout", partial = false): ProcessOutput =>
+    ({ runId: run.id, repositoryId: run.repositoryId, pid: run.pid, stream, text, partial, seq: ++seq, timestamp: now() })
 
   const finish = (id: string, status: Run["status"], exitCode: number) => {
     const run = runs.get(id)
@@ -118,6 +143,10 @@ export function createMockBackend(): Backend {
     const failing = /\b(fail|exit [1-9])\b/.test(command)
     let tick = 0
     emit("process:output-batch", [line(run, `\u001b[2m$ ${base.command}\u001b[0m`), line(run, `\u001b[90m${repo.path}\u001b[0m`)])
+    if (/\b(prompt|init)\b/.test(command)) {
+      emit("process:output-batch", [line(run, "Ok to proceed? (y/n) ", "stdout", true)])
+      return plain(run)
+    }
     run.timer = window.setInterval(() => {
       tick++
       const batch = [line(run, sampleOutput[tick % sampleOutput.length])]
@@ -168,7 +197,14 @@ export function createMockBackend(): Backend {
         if (state.status !== "running") break
         state.steps[i].status = "running"
         update()
-        const command = step.script ? `${repo.packageManager} run ${step.script}` : step.command
+        const global = step.globalCommand ? workspace.globalCommands.find((g) => g.id === step.globalCommand) : undefined
+        if (!step.script && step.globalCommand && !global) {
+          state.steps[i].status = "failed"
+          state.steps[i].error = `global command for step "${step.label}" no longer exists`
+          state.status = "failed"
+          break
+        }
+        const command = step.script ? `${repo.packageManager} run ${step.script}` : global ? global.command : step.command
         const run = start(repo.id, command, step.label, state.id, step.id)
         state.steps[i].runId = run.id
         if (run.status === "skipped") { state.steps[i].status = "skipped"; update(); continue }
@@ -205,7 +241,7 @@ export function createMockBackend(): Backend {
       const repo: Repository = {
         id: uid(), name, path, packageManager: "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(), problem: "",
         scripts: [{ name: "dev", command: "node server.js" }, { name: "test", command: "node --test" }],
-        commandSequence: [{ id: uid(), label: "dev", script: "dev", command: "", enabled: false, background: true }],
+        commandSequence: [{ id: uid(), label: "dev", script: "dev", globalCommand: "", command: "", enabled: false, background: true }],
       }
       workspace.repositories.push(repo)
       group.repositoryIds.push(repo.id)
@@ -213,6 +249,23 @@ export function createMockBackend(): Backend {
       return structuredClone(repo)
     },
     async RefreshRepository(id) { const repo = findRepo(id); repo.lastRefreshedAt = now(); changed(); return structuredClone(repo) },
+    async CheckRepositoryFolder(path) {
+      const exists = folderExists(path)
+      const registered = findRepoByPath(path)
+      return {
+        path, exists, valid: exists, name: path.split(/[\\/]/).filter(Boolean).pop() ?? "",
+        problem: exists ? "" : `folder not found: ${path}`, registeredId: registered?.id ?? "", registeredName: registered?.name ?? "",
+      }
+    },
+    async RelocateRepository(id, path) {
+      const repo = findRepo(id)
+      if (!folderExists(path)) throw `cannot use ${path}: folder not found`
+      const other = findRepoByPath(path)
+      if (other && other.id !== id) throw `${path} is already registered as "${other.name}"`
+      Object.assign(repo, { path, problem: "", lastRefreshedAt: now() })
+      changed()
+      return structuredClone(repo)
+    },
     async RefreshAll() { workspace.repositories.forEach((r) => { r.lastRefreshedAt = now() }); changed() },
     async RemoveRepository(id) {
       runs.forEach((r) => { if (r.repositoryId === id) stop(r.id) })
@@ -245,8 +298,10 @@ export function createMockBackend(): Backend {
     },
     async ExportWorkspace(groupIDs) {
       const groups = workspace.groups.filter((g) => !groupIDs.length || groupIDs.includes(g.id))
+      const used = new Set(groups.flatMap((g) => g.repositoryIds.map(findRepo).flatMap((r) => (r.commandSequence ?? []).map((s) => s.globalCommand))))
+      const globals = workspace.globalCommands.filter((g) => !groupIDs.length || used.has(g.id))
       const doc: ExportDoc = {
-        format: "repodock.workspace-export", version: 1, exportedAt: now(),
+        format: "repodock.workspace-export", version: 2, exportedAt: now(), ...(globals.length ? { globalCommands: globals } : {}),
         groups: groups.map((g) => ({
           name: g.name, runMode: g.runMode, collapsed: g.collapsed,
           repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, path: r.path, commandSequence: r.commandSequence })),
@@ -278,7 +333,11 @@ export function createMockBackend(): Backend {
     },
     async PreviewImport(path) {
       const doc = parseExport(path)
-      const preview: ImportPreview = { path, exportedAt: doc.exportedAt, groups: [], groupsToCreate: 0, new: 0, existing: 0, missing: 0, shellCommands: 0 }
+      const preview: ImportPreview = { path, exportedAt: doc.exportedAt, groups: [], globalCommands: [], groupsToCreate: 0, new: 0, existing: 0, missing: 0, shellCommands: 0 }
+      for (const plan of planGlobals(doc)) {
+        preview.globalCommands!.push({ id: plan.doc.id, name: plan.doc.name, command: plan.doc.command, status: plan.status, importName: plan.name })
+        if (plan.status !== "existing") preview.shellCommands++
+      }
       const seen = new Set<string>()
       for (const group of doc.groups) {
         const exists = !!findGroupByName(group.name)
@@ -286,12 +345,13 @@ export function createMockBackend(): Backend {
         preview.groups.push({
           name: group.name, exists,
           repositories: group.repositories.map((repo) => {
-            const status = seen.has(repo.path.toLowerCase()) ? "duplicate" : findRepoByPath(repo.path) ? "existing" : "new"
+            const status = seen.has(repo.path.toLowerCase()) ? "duplicate" : findRepoByPath(repo.path) ? "existing" : folderExists(repo.path) ? "new" : "missing"
             seen.add(repo.path.toLowerCase())
             if (status === "existing") preview.existing++
-            if (status === "new") {
+            if (status === "missing") preview.missing++
+            if (status === "new" || status === "missing") {
               preview.new++
-              preview.shellCommands += (repo.commandSequence ?? []).filter((s) => !s.script && s.command).length
+              preview.shellCommands += (repo.commandSequence ?? []).filter((s) => !s.script && !s.globalCommand && s.command).length
             }
             return { name: repo.name, path: repo.path, status, steps: repo.commandSequence }
           }),
@@ -301,7 +361,15 @@ export function createMockBackend(): Backend {
     },
     async ApplyImport(path, options) {
       const doc = parseExport(path)
-      const result = { groupsCreated: 0, repositoriesAdded: 0, repositoriesSkipped: 0 }
+      const result = { groupsCreated: 0, globalCommandsAdded: 0, repositoriesAdded: 0, repositoriesSkipped: 0 }
+      const globalIds = new Map<string, string>()
+      for (const plan of planGlobals(doc)) {
+        if (plan.localId) { globalIds.set(plan.doc.id, plan.localId); continue }
+        const local = { id: uid(), name: plan.name, command: plan.doc.command.trim() }
+        workspace.globalCommands.push(local)
+        globalIds.set(plan.doc.id, local.id)
+        result.globalCommandsAdded++
+      }
       for (const entry of doc.groups) {
         let group = findGroupByName(entry.name)
         if (!group) {
@@ -309,12 +377,17 @@ export function createMockBackend(): Backend {
           workspace.groups.push(group)
           result.groupsCreated++
         }
-        for (const repo of entry.repositories) {
+        for (const entryRepo of entry.repositories) {
+          const override = options.pathOverrides?.[entryRepo.path]?.trim()
+          const repo = override ? { ...entryRepo, path: override } : entryRepo
           if (findRepoByPath(repo.path)) { result.repositoriesSkipped++; continue }
           const record: Repository = {
             id: uid(), name: repo.name, path: repo.path, packageManager: "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
-            problem: "", scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),
-            commandSequence: repo.commandSequence?.map((s) => ({ ...s, id: uid(), enabled: options.keepStepsEnabled && s.enabled })) ?? null,
+            problem: folderExists(repo.path) ? "" : `folder not found: ${repo.path}`, scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),
+            commandSequence: repo.commandSequence?.map((s) => ({
+              ...s, id: uid(), enabled: options.keepStepsEnabled && s.enabled,
+              globalCommand: s.globalCommand ? globalIds.get(s.globalCommand) ?? "" : "",
+            })) ?? null,
           }
           workspace.repositories.push(record)
           group.repositoryIds.push(record.id)
@@ -390,7 +463,27 @@ export function createMockBackend(): Backend {
       repo.groupId = groupID
       changed()
     },
-    async SaveCommandSequence(repoID, steps: CommandStep[]) { findRepo(repoID).commandSequence = structuredClone(steps); changed() },
+    async SaveCommandSequence(repoID, steps: CommandStep[]) {
+      findRepo(repoID).commandSequence = steps.map((s) => ({
+        ...s,
+        globalCommand: s.script ? "" : s.globalCommand,
+        command: s.script || s.globalCommand ? "" : s.command,
+        label: s.label.trim() || s.script || workspace.globalCommands.find((g) => g.id === s.globalCommand)?.name || s.command.trim(),
+      }))
+      changed()
+    },
+    async SaveGlobalCommands(commands) {
+      const names = new Set<string>()
+      const clean = commands.map((c) => ({ id: c.id || uid(), name: c.name.trim(), command: c.command.trim() }))
+      for (const c of clean) {
+        if (!c.name || !c.command) throw "global command name and command cannot be empty"
+        if (names.has(c.name.toLowerCase())) throw `global command name "${c.name}" is used more than once`
+        names.add(c.name.toLowerCase())
+      }
+      workspace.globalCommands = clean
+      changed()
+      return structuredClone(clean)
+    },
     async RunScript(repoID, scriptName, label) {
       const repo = findRepo(repoID)
       if (!repo.scripts.some((s) => s.name === scriptName)) throw `script not found: ${scriptName}`
@@ -399,6 +492,19 @@ export function createMockBackend(): Backend {
     async RunCommand(repoID, command, label) { return start(repoID, command, label) },
     async WaitForRun(runID) { return waitFor(runID) },
     async StopProcess(runID) { stop(runID) },
+    async SendInput(runID, text, secret) {
+      const run = runs.get(runID)
+      if (!run || run.status !== "running") throw "the process is not running"
+      if (/[\r\n\0]/.test(text)) throw "input must be a single line"
+      emit("process:output-batch", [{ ...line(run, secret ? "•".repeat(Math.min(text.length, 12)) : text), stream: "stdin" }])
+      emit("process:output-batch", [line(run, `received: ${secret ? "(hidden)" : JSON.stringify(text)}`)])
+      if (!run.timer) window.setTimeout(() => finish(runID, "exited", 0), 300) // simulated prompt answered
+    },
+    async CloseInput(runID) {
+      const run = runs.get(runID)
+      if (!run || run.status !== "running") throw "the process is not running"
+      emit("process:output-batch", [{ ...line(run, "^D"), stream: "stdin" }])
+    },
     async RestartProcess(runID) {
       const run = runs.get(runID)
       if (!run) throw `run not found: ${runID}`

@@ -1,4 +1,4 @@
-import { AlertTriangle, Copy, FileKey2, FolderOpen, ListOrdered, RefreshCcw, Square } from "lucide-react"
+import { AlertTriangle, Copy, FileKey2, FolderOpen, FolderSearch, ListOrdered, RefreshCcw, Square } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip } from "@/components/ui/tooltip"
@@ -7,13 +7,14 @@ import { useNotifications } from "@/state/notifications"
 import { formatTime } from "@/lib/utils"
 import type { Repository } from "../domain"
 
-export function RepoHeader({ repo, running, onRefresh, onSequence, onEnvironment, onStopAll }: {
+export function RepoHeader({ repo, running, onRefresh, onSequence, onEnvironment, onStopAll, onRelocate }: {
   repo: Repository
   running: number
   onRefresh: () => void
   onSequence: () => void
   onEnvironment: () => void
   onStopAll: () => void
+  onRelocate: () => void
 }) {
   const { t, f } = useI18n()
   const { notify } = useNotifications()
@@ -62,10 +63,11 @@ export function RepoHeader({ repo, running, onRefresh, onSequence, onEnvironment
       {repo.problem && (
         <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="font-medium">{t.header.problemTitle}</div>
             <div className="break-words text-muted-foreground">{repo.problem} — {t.header.problemHint}</div>
           </div>
+          <Button size="xs" variant="outline" className="shrink-0" onClick={onRelocate}><FolderSearch /> {t.relocate.action}</Button>
         </div>
       )}
     </header>

@@ -298,3 +298,132 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatal("non-JSON files must be rejected")
 	}
 }
+
+func TestRelocateRepository(t *testing.T) {
+	a := newTestApp(t)
+	original := fixture(t)
+	repo, err := a.AddRepository(original, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.SaveCommandSequence(repo.ID, []domain.CommandStep{{ID: "keep", Script: "build", Enabled: true}})
+	other, err := a.AddRepository(fixture(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the checkout moving: the old folder disappears.
+	moved := filepath.Join(t.TempDir(), "moved")
+	if err := os.Rename(original, moved); err != nil {
+		t.Fatal(err)
+	}
+	if refreshed, _ := a.RefreshRepository(repo.ID); !strings.Contains(refreshed.Problem, "folder not found") {
+		t.Fatalf("problem = %q", refreshed.Problem)
+	}
+
+	if check := a.CheckRepositoryFolder(moved); !check.Valid || !check.Exists || check.Name != "fixture" || check.RegisteredID != "" {
+		t.Fatalf("check = %+v", check)
+	}
+	if check := a.CheckRepositoryFolder(t.TempDir()); check.Valid || !check.Exists || !strings.Contains(check.Problem, "package.json") {
+		t.Fatalf("empty folder check = %+v", check)
+	}
+	if check := a.CheckRepositoryFolder(filepath.Join(moved, "nope")); check.Exists || check.Valid {
+		t.Fatalf("missing folder check = %+v", check)
+	}
+
+	if _, err := a.RelocateRepository(repo.ID, other.Path); err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("relocating onto another repository must fail, got %v", err)
+	}
+	if _, err := a.RelocateRepository(repo.ID, t.TempDir()); err == nil {
+		t.Fatal("a folder without package.json must be rejected")
+	}
+
+	relocated, err := a.RelocateRepository(repo.ID, moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if relocated.ID != repo.ID || relocated.Problem != "" || relocated.GroupID != repo.GroupID || len(relocated.Scripts) != 2 {
+		t.Fatalf("relocated = %+v", relocated)
+	}
+	if len(relocated.CommandSequence) != 1 || relocated.CommandSequence[0].ID != "keep" {
+		t.Fatalf("sequence must be preserved: %+v", relocated.CommandSequence)
+	}
+}
+
+func TestImportWithPathOverride(t *testing.T) {
+	a := newTestApp(t)
+	actual := fixture(t)
+	file := filepath.Join(t.TempDir(), "import.json")
+	doc := `{"format":"repodock.workspace-export","version":1,"exportedAt":"2026-10-06T00:00:00Z","groups":[{"name":"Team","runMode":"sequential","collapsed":false,"repositories":[{"name":"api","path":"/not/on/this/machine/api","commandSequence":null}]}]}`
+	if err := os.WriteFile(file, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := a.PreviewImport(file)
+	if err != nil || preview.Missing != 1 {
+		t.Fatalf("preview = %+v, %v", preview, err)
+	}
+	missingPath := preview.Groups[0].Repositories[0].Path
+
+	if _, err := a.ApplyImport(file, domain.ImportOptions{PathOverrides: map[string]string{missingPath: t.TempDir()}}); err == nil {
+		t.Fatal("an override without package.json must be rejected")
+	}
+	if len(a.Workspace().Repositories) != 0 {
+		t.Fatal("a rejected import must not change the workspace")
+	}
+
+	if _, err := a.ApplyImport(file, domain.ImportOptions{PathOverrides: map[string]string{missingPath: actual}}); err != nil {
+		t.Fatal(err)
+	}
+	repos := a.Workspace().Repositories
+	if len(repos) != 1 || repos[0].Problem != "" || !workspacemod.SamePath(repos[0].Path, actual) || len(repos[0].Scripts) != 2 {
+		t.Fatalf("repos = %+v", repos)
+	}
+}
+
+func TestGlobalCommandSteps(t *testing.T) {
+	a := newTestApp(t)
+	repo, err := a.AddRepository(fixture(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := a.SaveGlobalCommands([]domain.GlobalCommand{{Name: " ok ", Command: " exit 0 "}, {Name: "fail", Command: "exit 3"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved) != 2 || saved[0].ID == "" || saved[0].Name != "ok" || saved[0].Command != "exit 0" {
+		t.Fatalf("saved = %+v", saved)
+	}
+	if _, err := a.SaveGlobalCommands([]domain.GlobalCommand{{Name: "a", Command: "x"}, {Name: "A", Command: "y"}}); err == nil {
+		t.Fatal("duplicate names must be rejected")
+	}
+
+	steps := []domain.CommandStep{
+		{ID: "a", GlobalCommand: saved[0].ID, Command: "ignored", Enabled: true},
+		{ID: "b", GlobalCommand: saved[1].ID, Enabled: true},
+	}
+	if err := a.SaveCommandSequence(repo.ID, steps); err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := a.workspace.Repository(repo.ID)
+	if stored.CommandSequence[0].Label != "ok" || stored.CommandSequence[0].Command != "" {
+		t.Fatalf("global steps get the command name as label and no inline text: %+v", stored.CommandSequence[0])
+	}
+	seq, err := a.RunSequence(repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done, _ := a.sequence.Wait(seq.ID)
+	if done.Steps[0].Status != domain.StepCompleted || done.Steps[1].Status != domain.StepFailed {
+		t.Fatalf("steps = %+v", done.Steps)
+	}
+
+	// Removing a global command makes referencing steps fail with a clear error.
+	if _, err := a.SaveGlobalCommands(saved[1:]); err != nil {
+		t.Fatal(err)
+	}
+	seq, _ = a.RunSequence(repo.ID)
+	done, _ = a.sequence.Wait(seq.ID)
+	if done.Steps[0].Status != domain.StepFailed || !strings.Contains(done.Steps[0].Error, "no longer exists") {
+		t.Fatalf("steps = %+v", done.Steps)
+	}
+}

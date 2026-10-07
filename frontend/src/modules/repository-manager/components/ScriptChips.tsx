@@ -15,7 +15,7 @@ export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; 
         <Badge className="tabular-nums">{repo.scripts.length}</Badge>
       </div>
       {repo.scripts.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t.scripts.empty}</p>
+        <p className="text-xs text-muted-foreground">{repo.problem ? t.scripts.unknown : t.scripts.empty}</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {repo.scripts.map((script) => {

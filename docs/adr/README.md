@@ -34,3 +34,5 @@ Use the following template for new architectural decisions:
 | 0009 | Sequences execute in the backend | Accepted |
 | 0010 | Group runs: sequential or parallel | Accepted |
 | 0011 | Export/import groups and repositories as JSON | Accepted |
+| 0012 | Workspace-wide global commands referenced by sequence steps | Accepted |
+| 0013 | Answer process prompts through a stdin pipe | Accepted |

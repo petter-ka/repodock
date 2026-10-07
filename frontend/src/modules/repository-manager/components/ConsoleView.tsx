@@ -169,13 +169,15 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
 const LineRow = memo(function LineRow({ line, repoName, runLabel }: { line: ConsoleLine; repoName?: string; runLabel?: string }) {
   line.segments ??= parseAnsi(line.text)
   const stderr = line.stream === "stderr"
+  const stdin = line.stream === "stdin"
   return (
-    <div className={cn("flex w-max min-w-full gap-3 whitespace-pre px-6 hover:bg-white/[0.03]", stderr && "bg-red-500/[0.06]")} style={{ height: LINE_HEIGHT, lineHeight: `${LINE_HEIGHT}px` }}>
+    <div className={cn("flex w-max min-w-full gap-3 whitespace-pre px-6 hover:bg-white/[0.03]", stderr && "bg-red-500/[0.06]", stdin && "bg-emerald-500/[0.07]")} style={{ height: LINE_HEIGHT, lineHeight: `${LINE_HEIGHT}px` }}>
       <span className="w-16 shrink-0 select-none text-console-muted">{line.timestamp ? timeFormat.format(new Date(line.timestamp)) : ""}</span>
       {repoName !== undefined && <span className="w-28 shrink-0 select-none truncate text-sky-300/80">{repoName}</span>}
       {runLabel !== undefined && <span className="w-20 shrink-0 select-none truncate text-violet-300/80">{runLabel}</span>}
-      <span className={cn("w-1 shrink-0 select-none", stderr ? "bg-red-400/70" : "bg-transparent")} aria-hidden />
-      <span className={cn(stderr && "text-red-200")}>
+      <span className={cn("w-1 shrink-0 select-none", stderr ? "bg-red-400/70" : stdin ? "bg-emerald-400/70" : line.partial ? "bg-amber-400/70" : "bg-transparent")} aria-hidden />
+      {stdin && <span className="select-none text-emerald-300">›</span>}
+      <span className={cn(stderr && "text-red-200", stdin && "text-emerald-200")}>
         {line.segments.map((segment, i) => (
           <span key={i} style={styleToCSS(segment.style)}>{segment.text}</span>
         ))}

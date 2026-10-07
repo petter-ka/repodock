@@ -10,7 +10,7 @@ export function SheetContent({ className, children, closeLabel, ...props }: Reac
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-black/30" />
       <DialogPrimitive.Content
-        className={cn("fixed inset-y-0 right-0 z-40 flex w-full max-w-xl flex-col border-l border-border bg-background shadow-2xl outline-none", className)}
+        className={cn("fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-border bg-background shadow-2xl outline-none", !className?.includes("max-w-") && "max-w-xl", className)}
         {...props}
       >
         {children}

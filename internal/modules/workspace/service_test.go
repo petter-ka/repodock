@@ -214,3 +214,23 @@ func TestGroupRunMode(t *testing.T) {
 		t.Fatalf("legacy run mode = %q", got.RunMode)
 	}
 }
+
+func TestCleanGlobalCommands(t *testing.T) {
+	clean, err := CleanGlobalCommands([]domain.GlobalCommand{{ID: "x", Name: " lint ", Command: " npx eslint . "}, {ID: "x", Name: "b", Command: "c"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clean[0].Name != "lint" || clean[0].Command != "npx eslint ." || clean[1].ID == "x" || clean[1].ID == "" {
+		t.Fatalf("clean = %+v", clean)
+	}
+	for name, input := range map[string][]domain.GlobalCommand{
+		"empty name":    {{Name: " ", Command: "x"}},
+		"empty command": {{Name: "x", Command: " "}},
+		"multiline":     {{Name: "x", Command: "a\nb"}},
+		"duplicate":     {{Name: "Lint", Command: "a"}, {Name: "lint", Command: "b"}},
+	} {
+		if _, err := CleanGlobalCommands(input); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}

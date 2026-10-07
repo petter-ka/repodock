@@ -26,6 +26,8 @@ export class ProcessStore {
   private all: ConsoleLine[] = []
   private byRepo = new Map<string, ConsoleLine[]>()
   private byRun = new Map<string, ConsoleLine[]>()
+  /** runId → prompt text while the run's latest output is an unanswered prompt */
+  private prompts = new Map<string, string>()
   private listeners = new Set<() => void>()
   private version = 0
   private pending = false
@@ -99,6 +101,7 @@ export class ProcessStore {
     if (!run) return
     this.runs.set(exit.runId, { ...run, status: exit.status, exitCode: exit.exitCode, endedAt: exit.endedAt })
     this.snapshots.delete(exit.runId)
+    this.prompts.delete(exit.runId)
     this.changed()
   }
 
@@ -119,6 +122,8 @@ export class ProcessStore {
       let run = this.byRun.get(line.runId)
       if (!run) this.byRun.set(line.runId, (run = []))
       push(run, entry, RUN_LINE_LIMIT)
+      if (line.partial && line.stream !== "stdin") this.prompts.set(line.runId, line.text)
+      else this.prompts.delete(line.runId)
     }
     if (lines.length) this.changed()
   }
@@ -162,6 +167,7 @@ export class ProcessStore {
       this.runs.delete(id)
       this.byRun.delete(id)
       this.snapshots.delete(id)
+      this.prompts.delete(id)
     })
     const keep = (line: ConsoleLine) => !ids.has(line.runId)
     this.all = this.all.filter(keep)
@@ -185,6 +191,12 @@ export class ProcessStore {
       if ((!repositoryId || run.repositoryId === repositoryId) && isActive(run.status)) count++
     }
     return count
+  }
+
+  /** The prompt a running process is waiting on, if its latest output is one. */
+  prompt(runId: string): string | undefined {
+    const run = this.runs.get(runId)
+    return run && isActive(run.status) ? this.prompts.get(runId) : undefined
   }
 
   snapshot(runId: string) {

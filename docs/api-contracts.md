@@ -11,16 +11,21 @@ Lifecycle hooks are package-level (`app.Hooks`) so they are not bound to the fro
 - `BrowseRepository()` — native folder picker; empty string means cancelled.
 - `AddRepository(path, groupID)` — requires a valid `package.json`. An already registered path returns the existing (refreshed) record.
 - `RefreshRepository(id)`, `RefreshAll()` — re-read metadata. A missing/invalid `package.json` keeps the record and sets `problem`.
+- `CheckRepositoryFolder(path)` — never fails; returns `{ path, exists, valid (readable package.json), name, problem, registeredId, registeredName }`. Changes nothing.
+- `RelocateRepository(id, path)` — points a repository at another folder; keeps ID, group and sequence; refreshes metadata. Rejected for unusable folders, folders registered to another repository, or while the repository has running processes.
 - `RemoveRepository(id)` — stops the repository's processes and removes the registration. Nothing on disk is touched.
 - `SetGroupRunMode(id, mode)` — `"sequential"` or `"parallel"`; persisted on the group.
 - `CreateGroup(name)`, `RenameGroup(id, name)`, `DeleteGroup(id)` (members move to the first remaining group; the last group cannot be deleted), `SetGroupCollapsed(id, collapsed)`, `AssignRepository(id, groupID)`.
-- `SaveCommandSequence(repoID, steps)` — persists ordered steps; blank labels and missing IDs are filled in.
+- `SaveCommandSequence(repoID, steps)` — persists ordered steps; blank labels and missing IDs are filled in. Each step keeps one kind: `script`, else `globalCommand`, else `command`.
+- `SaveGlobalCommands(commands)` — replaces the workspace's global commands (`{ id, name, command }`, ADR-0012) and returns the normalized list. Rejects empty or duplicate names, empty or multi-line commands. Steps referencing a removed command fail when run.
 
 ## Process
 
 - `RunScript(repoID, scriptName, label)` — runs a declared script as `[pm, "run", name]` argv (ADR-0008).
 - `RunCommand(repoID, command, label)` — runs single-line shell text in the repository folder. Empty text is a `skipped` no-op run.
 - `WaitForRun(runID)`, `StopProcess(runID)` (tree termination, ADR-0007), `RestartProcess(runID)` (same spec, new run ID).
+- `SendInput(runID, text, secret)` — writes one line (`text` + newline) to a running process's stdin to answer a prompt (ADR-0013). Single line, ≤ 4 KiB; rejected when the run is not running, input was closed, or the process does not read within 3 s. The line is echoed as a `stdin` output line, masked when `secret`.
+- `CloseInput(runID)` — closes the running process's stdin (EOF); later input is rejected.
 - `StopRepository(repoID)` — cancels the repository's sequence and stops all its runs.
 - `ActiveRuns()`, `Runs()` (active + up to 200 retained finished runs), `ProcessSnapshots()`.
 
@@ -28,7 +33,7 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 
 ## Sequences
 
-- `RunSequence(repoID)` — runs the saved, enabled steps (ADR-0009).
+- `RunSequence(repoID)` — runs the saved, enabled steps (ADR-0009). Global command steps resolve their command text at run time (ADR-0012).
 - `CancelSequence(sequenceID)`, `Sequences()` (latest per repository).
 
 ## Group runs
@@ -43,8 +48,8 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 
 - `ExportWorkspace(groupIDs)` — native Save dialog, then writes the export document (all groups when `groupIDs` is empty). Returns the path, or `""` when cancelled.
 - `ChooseImportFile()` — native Open dialog (`*.json`). Returns the path, or `""` when cancelled.
-- `PreviewImport(path)` — validates the file and returns an `ImportPreview` (`groups[]` with `exists`, repositories with `status` new|missing|existing|duplicate and `steps`; counts `groupsToCreate`, `new`, `existing`, `missing`, `shellCommands`). Changes nothing.
-- `ApplyImport(path, { keepStepsEnabled })` — merges and returns `{ groupsCreated, repositoriesAdded, repositoriesSkipped }`. Emits `workspace:changed`. Executes nothing.
+- `PreviewImport(path)` — validates the file and returns an `ImportPreview` (`groups[]` with `exists`, repositories with `status` new|missing|existing|duplicate and `steps`; `globalCommands[]` with `{ id, name, command, status (new|existing|renamed), importName }`; counts `groupsToCreate`, `new`, `existing`, `missing`, `shellCommands`). Preview steps reference `globalCommands[].id`. Changes nothing.
+- `ApplyImport(path, { keepStepsEnabled, pathOverrides })` — `pathOverrides` maps a preview path to a replacement folder; every override is validated first and an unusable one rejects the import. Merges and returns `{ groupsCreated, globalCommandsAdded, repositoriesAdded, repositoriesSkipped }`. Emits `workspace:changed`. Executes nothing.
 
 ## Environment
 
@@ -58,7 +63,7 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 |---|---|---|
 | `workspace:changed` | `Workspace` | Refresh sidebar and repository metadata |
 | `process:started` | `Run` | New run, or stopping-state update |
-| `process:output-batch` | `ProcessOutput[]` | Output lines coalesced every ~50 ms (or 500 lines); each line carries run ID, repository ID, PID, stream, global `seq` and timestamp |
+| `process:output-batch` | `ProcessOutput[]` | Output lines coalesced every ~50 ms (or 500 lines); each line carries run ID, repository ID, PID, stream (`stdout`, `stderr`, or `stdin` for echoed input), `partial` (unterminated line shown after output paused — usually a prompt), global `seq` and timestamp |
 | `process:stats` | `ProcessSnapshot` | ~1 Hz RSS/CPU aggregated over the run's process tree |
 | `process:exited` | `ProcessExit` | Terminal state; always emitted after the run's final output batch |
 | `sequence:updated` | `SequenceRun` | Full sequence snapshot after every state change |

@@ -236,6 +236,16 @@ func (a *App) SaveCommandSequence(repoID string, steps []domain.CommandStep) err
 	return a.persist()
 }
 
+// SaveGlobalCommands replaces the workspace's reusable global commands and
+// returns the normalized list (IDs assigned, text trimmed).
+func (a *App) SaveGlobalCommands(commands []domain.GlobalCommand) ([]domain.GlobalCommand, error) {
+	saved, err := a.workspace.SaveGlobalCommands(commands)
+	if err != nil {
+		return nil, err
+	}
+	return saved, a.persist()
+}
+
 // ---- Processes -------------------------------------------------------------
 
 // RunScript runs a package.json script through the repository's package
@@ -268,6 +278,15 @@ func (a *App) RunCommand(repoID string, command string, label string) (domain.Ru
 func (a *App) WaitForRun(runID string) (domain.Run, error) { return a.process.Wait(runID) }
 
 func (a *App) StopProcess(runID string) error { return a.process.Stop(runID) }
+
+// SendInput writes one line to a running process's standard input, e.g. to
+// answer a "(y/n)" prompt. Secret input is echoed masked in the console.
+func (a *App) SendInput(runID string, text string, secret bool) error {
+	return a.process.SendInput(runID, text, secret)
+}
+
+// CloseInput closes a running process's standard input (EOF, like Ctrl+D).
+func (a *App) CloseInput(runID string) error { return a.process.CloseInput(runID) }
 
 func (a *App) RestartProcess(runID string) (domain.Run, error) {
 	run, ok := a.process.Run(runID)
@@ -444,6 +463,14 @@ func (e stepExecutor) StartStep(repo domain.Repository, step domain.CommandStep,
 			return domain.Run{}, fmt.Errorf("script %q is no longer defined in package.json", step.Script)
 		}
 		spec.Argv = repomod.ScriptArgv(current.PackageManager, step.Script)
+	} else if step.GlobalCommand != "" {
+		// Resolved at run time so edits to the global command apply to
+		// every sequence that uses it.
+		cmd, ok := e.a.workspace.GlobalCommand(step.GlobalCommand)
+		if !ok {
+			return domain.Run{}, fmt.Errorf("global command for step %q no longer exists", step.Label)
+		}
+		spec.Command = cmd.Command
 	} else {
 		spec.Command = step.Command
 	}

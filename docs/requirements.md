@@ -39,6 +39,8 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-15 | Add future feature modules without coupling to Repository Manager | P1 |
 | FR-16 | Run the sequences of all repositories in a group, sequentially or in parallel (selectable per group) | P0 |
 | FR-17 | Export groups and repositories to a JSON file and import them back (merge) | P1 |
+| FR-18 | Define workspace-wide global CLI commands and pick them as sequence steps; include them in export/import | P1 |
+| FR-19 | Answer interactive prompts (y/n, text, passwords) of running processes from the console | P1 |
 
 ## Non-functional requirements
 
@@ -62,6 +64,7 @@ Needs enough observability to diagnose runaway local dev processes.
 
 - FR-01: a folder must contain a valid `package.json` to be added. A registered repository whose `package.json` later becomes unreadable keeps its last known scripts and shows the problem.
 - FR-09: memory and CPU are aggregated over the whole process tree of a run.
+- FR-07: the sidebar shows each repository's command status. Green while any command is running (long-running scripts such as `npm run dev` stay green with a running count) or when the most recently finished command exited 0; red when it failed or crashed; neutral after the user stopped it from RepoDock. The status reflects runs of the current app session; dismissed or cleared runs no longer count.
 - FR-11: sequence steps are foreground (must exit 0) or background (start and continue). Sequences run in the backend (ADR-0009).
 - Environment values are masked by default and revealed explicitly for editing.
 - FR-16: see ADR-0010. Acceptance criteria:
@@ -78,7 +81,23 @@ Needs enough observability to diagnose runaway local dev processes.
   - import shows a preview (new/existing groups; new, missing, already registered and duplicate repositories; every step's command) before anything changes;
   - import merges: groups by name, repositories by path; existing records are not modified;
   - imported steps are disabled unless the user opts in; nothing runs during import;
-  - invalid, foreign or newer-version files are rejected with a clear message.
+  - invalid, foreign or newer-version files are rejected with a clear message;
+  - for repositories whose folder is not found on this machine, the user can type or browse to the right folder in the preview; the folder is validated before import, and an invalid folder blocks the import until it is fixed or cleared;
+  - any repository can later be pointed at another folder with "Change folder…" (from the repository menu or the problem banner), keeping its group and sequence.
+
+- FR-18 (2026-10-07): see ADR-0012. Acceptance criteria:
+  - the user can add, rename, edit and remove named global commands from the sidebar workspace menu or the sequence editor;
+  - a sequence step can be of type Global and pick a global command from a select; it runs in the repository's folder;
+  - editing a global command changes every sequence that uses it; a step whose global command was removed is flagged in the editor and fails with a clear message when run;
+  - exports include the global commands used by the exported steps (all of them for a full export);
+  - import previews global commands with their full text, reuses identical ones, adds a renamed copy when a name is taken by a different command, never modifies existing ones, and counts added commands in the shell-command warning.
+
+- FR-19 (2026-10-07): see ADR-0013. Acceptance criteria:
+  - a prompt that does not end with a newline becomes visible in the console and the run is marked as waiting for input;
+  - the user can send a line, an empty line, `y`, `n`, or EOF to any running process, including sequence steps;
+  - sent input is echoed in the console; hidden input is masked and never shown, logged or emitted in clear text;
+  - a process that does not read its input cannot freeze the app;
+  - limitation: prompts that require a real terminal (arrow-key menus) are not supported.
 
 ## Empty command semantics
 

@@ -6,6 +6,7 @@ package process
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -48,12 +49,15 @@ type Options struct {
 	StatsInterval  time.Duration
 	OutputInterval time.Duration
 	StopGrace      time.Duration
+	// PromptIdle is how long output must pause before an unterminated line
+	// is shown as a prompt. Zero disables prompt detection.
+	PromptIdle time.Duration
 	// RetainFinished bounds how many finished runs are kept for display.
 	RetainFinished int
 }
 
 func DefaultOptions() Options {
-	return Options{StatsInterval: time.Second, OutputInterval: 50 * time.Millisecond, StopGrace: 3 * time.Second, RetainFinished: 200}
+	return Options{StatsInterval: time.Second, OutputInterval: 50 * time.Millisecond, StopGrace: 3 * time.Second, PromptIdle: 250 * time.Millisecond, RetainFinished: 200}
 }
 
 type Manager struct {
@@ -79,6 +83,12 @@ type trackedRun struct {
 	tree          platform.Tree
 	done          chan struct{}
 	stopRequested bool
+
+	// stdin is the write end of the child's standard input. inputMu
+	// serializes writes so lines from concurrent calls never interleave.
+	stdin       io.WriteCloser
+	inputMu     sync.Mutex
+	inputClosed bool
 }
 
 func New(opts Options) *Manager {
@@ -139,13 +149,20 @@ func (m *Manager) Start(spec Spec) (domain.Run, error) {
 	cmd := platform.ShellCommand(text, spec.Workdir)
 	cmd.Env = childEnv()
 	cmd.WaitDelay = 2 * time.Second
-	stdout := newLineWriter(func(line string) { m.appendOutput(t, "stdout", line) })
-	stderr := newLineWriter(func(line string) { m.appendOutput(t, "stderr", line) })
+	stdout := newLineWriter(func(line string, partial bool) { m.appendOutput(t, "stdout", line, partial) }, m.opts.PromptIdle)
+	stderr := newLineWriter(func(line string, partial bool) { m.appendOutput(t, "stderr", line, partial) }, m.opts.PromptIdle)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	t.cmd = cmd
 
 	m.register(t)
+	// A pipe keeps stdin open so interactive prompts can be answered with
+	// SendInput; it is closed by CloseInput (EOF) or when the process exits.
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return m.failStart(t, fmt.Errorf("open standard input: %w", err)), nil
+	}
+	t.stdin = stdin
 	if err := cmd.Start(); err != nil {
 		return m.failStart(t, fmt.Errorf("start command: %w", err)), nil
 	}
@@ -189,7 +206,7 @@ func childEnv() []string {
 
 func (m *Manager) failStart(t *trackedRun, cause error) domain.Run {
 	m.register(t)
-	m.appendOutput(t, "stderr", "RepoDock: "+cause.Error())
+	m.appendOutput(t, "stderr", "RepoDock: "+cause.Error(), false)
 	m.output.flush()
 	m.mu.Lock()
 	t.run.Status = domain.RunFailed
@@ -212,14 +229,100 @@ func (m *Manager) register(t *trackedRun) {
 	m.order = append(m.order, t.run.ID)
 }
 
-func (m *Manager) appendOutput(t *trackedRun, stream, text string) {
+func (m *Manager) appendOutput(t *trackedRun, stream, text string, partial bool) {
 	m.mu.RLock()
 	pid := t.run.PID
 	m.mu.RUnlock()
 	m.output.add(domain.ProcessOutput{
 		RunID: t.run.ID, RepositoryID: t.run.RepositoryID, PID: pid,
-		Stream: stream, Text: text, Seq: m.seq.Add(1), Timestamp: time.Now().UTC(),
+		Stream: stream, Text: text, Partial: partial, Seq: m.seq.Add(1), Timestamp: time.Now().UTC(),
 	})
+}
+
+// MaxInputLength bounds one line of input sent to a process.
+const MaxInputLength = 4096
+
+// inputTimeout bounds how long SendInput waits for a process that is not
+// reading its input (and whose pipe buffer is full).
+const inputTimeout = 3 * time.Second
+
+// SendInput writes one line (text plus a newline) to the run's standard
+// input, answering prompts such as "Continue? (y/n)". The line is echoed to
+// the console as a "stdin" output line; secret input is echoed masked.
+// The text is passed to the process as data and never interpreted.
+func (m *Manager) SendInput(runID, text string, secret bool) error {
+	if len(text) > MaxInputLength {
+		return fmt.Errorf("input is longer than %d bytes", MaxInputLength)
+	}
+	if strings.ContainsAny(text, "\r\n\x00") {
+		return fmt.Errorf("input must be a single line")
+	}
+	t, err := m.inputTarget(runID)
+	if err != nil {
+		return err
+	}
+	echo := text
+	if secret {
+		echo = strings.Repeat("•", min(len([]rune(text)), 12))
+	}
+	m.appendOutput(t, "stdin", echo, false)
+	return t.writeInput([]byte(text + "\n"))
+}
+
+// CloseInput closes the run's standard input so the process reads EOF
+// (like Ctrl+D in a terminal). Further input is rejected.
+func (m *Manager) CloseInput(runID string) error {
+	t, err := m.inputTarget(runID)
+	if err != nil {
+		return err
+	}
+	t.inputMu.Lock()
+	defer t.inputMu.Unlock()
+	if t.inputClosed {
+		return nil
+	}
+	t.inputClosed = true
+	m.appendOutput(t, "stdin", "^D", false)
+	return t.stdin.Close()
+}
+
+func (m *Manager) inputTarget(runID string) (*trackedRun, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	t, ok := m.runs[runID]
+	if !ok {
+		return nil, fmt.Errorf("run not found: %s", runID)
+	}
+	if t.run.Status != domain.RunRunning || t.stdin == nil {
+		return nil, fmt.Errorf("the process is not running")
+	}
+	return t, nil
+}
+
+func (t *trackedRun) writeInput(data []byte) error {
+	t.inputMu.Lock()
+	defer t.inputMu.Unlock()
+	if t.inputClosed {
+		return fmt.Errorf("input was closed for this process")
+	}
+	// A pipe write blocks when the child does not read and the buffer is
+	// full; never let that hang the caller.
+	result := make(chan error, 1)
+	go func() {
+		_, err := t.stdin.Write(data)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if err != nil {
+			return fmt.Errorf("send input: %w", err)
+		}
+		return nil
+	case <-time.After(inputTimeout):
+		return fmt.Errorf("the process is not reading its input")
+	case <-t.done:
+		return fmt.Errorf("the process exited")
+	}
 }
 
 func (m *Manager) wait(t *trackedRun, stdout, stderr *lineWriter) {

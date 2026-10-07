@@ -11,7 +11,7 @@ Users want to back up their setup, move it to a new machine, and share a team's 
 
 ### Document
 
-A separate, versioned export format (`docs/data-model.md`, "Export document"):
+A separate, versioned export format (`docs/data-model.md`, "Export document"). Version 2 adds optional `globalCommands[]` and the step `globalCommand` reference (ADR-0012); version 1 files are still read:
 
 ```json
 {
@@ -44,7 +44,9 @@ A separate, versioned export format (`docs/data-model.md`, "Export document"):
 3. `ApplyImport` merges:
    - groups match by name (case-insensitive); existing groups keep their local run mode;
    - repositories match by path; existing registrations are left unchanged;
-   - new repositories get fresh IDs and are refreshed from their `package.json`; a folder missing on this machine is still added and shows its problem;
+   - new repositories get fresh IDs and are refreshed from their `package.json`;
+   - for a repository whose folder is **missing on this machine**, the preview offers a path field with a native folder picker. The chosen folder is checked live (`CheckRepositoryFolder`: exists, readable `package.json`, already registered) and sent as `pathOverrides`. `ApplyImport` re-validates every override and rejects the whole import if one is unusable, so a typo cannot add a broken record. An override that points at an already registered folder is skipped like any duplicate;
+   - a missing folder left empty is still added and shows its problem; it can be fixed later with **Change folder…** (`RelocateRepository`), which keeps the record's ID, group and command sequence;
    - **imported steps are disabled** unless the user ticks "Keep imported sequence steps enabled".
 4. Nothing is executed during or after import.
 
@@ -55,6 +57,10 @@ The `transfer` backend module owns building, parsing, planning and merging (pure
 - **Copy `workspace.json`**: leaks internal IDs and machine-specific data, no validation, no merge.
 - **Replace mode** (wipe and load): destructive; importing into an empty workspace already gives the same result. Can be added later behind an explicit confirmation.
 - **Overwrite existing repositories' sequences on import**: would silently replace local work; users can remove and re-import a repository instead.
+
+## Relocating a repository
+
+`RelocateRepository(id, path)` points an existing record at another folder (after an import from another machine, or after moving a checkout). The folder must exist and contain a readable `package.json`, must not belong to another registered repository, and the repository must have no running processes. Metadata is refreshed; the ID, group and command sequence are kept.
 
 ## Consequences
 
