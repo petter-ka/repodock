@@ -12,6 +12,7 @@ import { Kbd } from "@/components/ui/kbd"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { modLabel } from "@/lib/keyboard"
+import { readPreference, writePreference } from "@/lib/preferences"
 import { cn, formatTime } from "@/lib/utils"
 import { displayName, type Group, type GroupRepoState, type GroupRunMode, type ImportPreview, type Repository } from "../domain"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
@@ -43,6 +44,12 @@ type DragState = { kind: "repo"; repoId: string; groupId: string; from: number }
  */
 type DropState = { kind: "repo"; groupId: string; slot: number } | { kind: "group"; slot: number }
 
+const WIDTH_KEY = "sidebar.width"
+const DEFAULT_WIDTH = 300
+const MIN_WIDTH = 220
+const MAX_WIDTH = 560
+const clampWidth = (width: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)))
+
 export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryActions }>(function RepoSidebar({ actions }, filterRef) {
   const { t, f } = useI18n()
   const { workspace, selectedRepoId } = useWorkspaceState()
@@ -53,6 +60,12 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   const [globalsOpen, setGlobalsOpen] = useState(false)
   const [drag, setDrag] = useState<DragState | null>(null)
   const [drop, setDrop] = useState<DropState | null>(null)
+  const [width, setWidth] = useState(() => clampWidth(Number(readPreference(WIDTH_KEY)) || DEFAULT_WIDTH))
+  const saveWidth = (next: number) => {
+    const value = clampWidth(next)
+    setWidth(value)
+    writePreference(WIDTH_KEY, String(value))
+  }
 
   const { running, latest } = useMemo(() => {
     void version
@@ -106,7 +119,44 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   const groupDropSlot = drag?.kind === "group" && drop?.kind === "group" && !isNoopSlot(drop.slot, drag.from) ? drop.slot : null
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-sidebar">
+    <aside style={{ width }} className="relative flex shrink-0 flex-col border-r border-border bg-sidebar">
+      {/* Resize handle on the right edge: drag, ←/→ (Shift = larger steps), double-click resets. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t.sidebar.resize}
+        aria-valuenow={width}
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={MAX_WIDTH}
+        tabIndex={0}
+        title={t.sidebar.resizeHint}
+        onPointerDown={(event) => {
+          event.preventDefault()
+          const handle = event.currentTarget
+          handle.setPointerCapture(event.pointerId)
+          const startX = event.clientX
+          const startWidth = width
+          let latest = startWidth
+          const move = (e: PointerEvent) => { latest = clampWidth(startWidth + e.clientX - startX); setWidth(latest) }
+          const up = () => {
+            handle.removeEventListener("pointermove", move)
+            handle.removeEventListener("pointerup", up)
+            handle.removeEventListener("pointercancel", up)
+            saveWidth(latest)
+          }
+          handle.addEventListener("pointermove", move)
+          handle.addEventListener("pointerup", up)
+          handle.addEventListener("pointercancel", up)
+        }}
+        onDoubleClick={() => saveWidth(DEFAULT_WIDTH)}
+        onKeyDown={(event) => {
+          const step = event.shiftKey ? 64 : 16
+          if (event.key === "ArrowLeft") { event.preventDefault(); saveWidth(width - step) }
+          if (event.key === "ArrowRight") { event.preventDefault(); saveWidth(width + step) }
+          if (event.key === "Home") { event.preventDefault(); saveWidth(DEFAULT_WIDTH) }
+        }}
+        className="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition hover:after:bg-primary/60 focus-visible:after:bg-primary"
+      />
       <div className="border-b border-border px-4 pb-3 pt-4">
         <div className="flex items-center justify-between">
           <div>

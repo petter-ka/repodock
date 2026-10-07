@@ -498,6 +498,14 @@ func TestExportImportPreservesEverything(t *testing.T) {
 		{ID: "d", Label: "Placeholder", Enabled: true},
 	})
 	_ = source.SaveCommandSequence(plain.ID, []domain.CommandStep{{ID: "p", Command: "docker compose up -d", Enabled: true, Background: true}})
+	if _, err := source.SaveQuickCommands(copy2.ID, []domain.QuickCommand{
+		{Script: "hello"},
+		{GlobalCommand: globals[0].ID},
+		{Command: "git status", Label: "Status"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = source.SaveQuickCommands(plain.ID, []domain.QuickCommand{{Command: "docker compose logs -f"}})
 
 	file := filepath.Join(t.TempDir(), "export.json")
 	if err := source.exportTo(file, nil); err != nil {
@@ -528,6 +536,9 @@ func TestExportImportPreservesEverything(t *testing.T) {
 				for _, s := range repo.CommandSequence {
 					out = append(out, fmt.Sprintf("    step %q script=%q global=%q command=%q enabled=%v bg=%v", s.Label, s.Script, globalName[s.GlobalCommand], s.Command, s.Enabled, s.Background))
 				}
+				for _, q := range repo.QuickCommands {
+					out = append(out, fmt.Sprintf("    quick %q script=%q global=%q command=%q", q.Label, q.Script, globalName[q.GlobalCommand], q.Command))
+				}
 			}
 		}
 		return out
@@ -535,6 +546,9 @@ func TestExportImportPreservesEverything(t *testing.T) {
 	want, got := describe(source), describe(target)
 	if !slices.Equal(want, got) {
 		t.Fatalf("round trip differs:\nwant\n%s\ngot\n%s", strings.Join(want, "\n"), strings.Join(got, "\n"))
+	}
+	if !strings.Contains(strings.Join(got, "\n"), `quick "Clean" script="" global="Clean=npx rimraf dist"`) {
+		t.Fatalf("quick commands must round-trip with their global reference:\n%s", strings.Join(got, "\n"))
 	}
 	if !strings.Contains(strings.Join(got, "\n"), `repo "fixture (2)"`) || !strings.Contains(strings.Join(got, "\n"), `pm=""`) {
 		t.Fatalf("expected duplicate alias and plain folders:\n%s", strings.Join(got, "\n"))

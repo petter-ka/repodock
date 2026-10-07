@@ -154,6 +154,9 @@ func normalize(state *domain.Workspace) {
 		if repo.EnvFiles == nil {
 			repo.EnvFiles = []string{}
 		}
+		if repo.QuickCommands == nil {
+			repo.QuickCommands = []domain.QuickCommand{}
+		}
 		if _, ok := groupIndex[repo.GroupID]; !ok {
 			repo.GroupID = state.Groups[0].ID
 		}
@@ -448,6 +451,72 @@ func (s *Service) MoveRepository(id, groupID string, index int) error {
 	return nil
 }
 
+// MaxQuickCommands bounds the pinned commands of one repository.
+const MaxQuickCommands = 100
+
+// CleanQuickCommands normalizes pinned commands: trims text, keeps exactly
+// one kind per entry (script, then global command, then command), drops
+// empty entries, assigns missing or repeated IDs and defaults the label.
+// lookup resolves a global command's name for the default label.
+func CleanQuickCommands(commands []domain.QuickCommand, lookup func(id string) (domain.GlobalCommand, bool)) ([]domain.QuickCommand, error) {
+	if len(commands) > MaxQuickCommands {
+		return nil, fmt.Errorf("more than %d quick commands", MaxQuickCommands)
+	}
+	clean := make([]domain.QuickCommand, 0, len(commands))
+	seen := map[string]bool{}
+	for _, cmd := range commands {
+		cmd.Label = strings.TrimSpace(cmd.Label)
+		cmd.Script = strings.TrimSpace(cmd.Script)
+		cmd.GlobalCommand = strings.TrimSpace(cmd.GlobalCommand)
+		cmd.Command = strings.TrimSpace(cmd.Command)
+		if cmd.Script != "" {
+			cmd.GlobalCommand, cmd.Command = "", ""
+		} else if cmd.GlobalCommand != "" {
+			cmd.Command = ""
+		}
+		if cmd.Script == "" && cmd.GlobalCommand == "" && cmd.Command == "" {
+			continue
+		}
+		if strings.ContainsAny(cmd.Label+cmd.Script+cmd.GlobalCommand+cmd.Command, "\r\n\x00") {
+			return nil, fmt.Errorf("quick command %q contains line breaks or NUL bytes", cmd.Label)
+		}
+		if len(cmd.Label) > MaxAliasLength {
+			return nil, fmt.Errorf("quick command label is longer than %d characters", MaxAliasLength)
+		}
+		if cmd.ID == "" || seen[cmd.ID] {
+			cmd.ID = uuid.NewString()
+		}
+		seen[cmd.ID] = true
+		if cmd.Label == "" {
+			switch {
+			case cmd.Script != "":
+				cmd.Label = cmd.Script
+			case cmd.GlobalCommand != "":
+				if global, ok := lookup(cmd.GlobalCommand); ok {
+					cmd.Label = global.Name
+				}
+			default:
+				cmd.Label = cmd.Command
+			}
+		}
+		clean = append(clean, cmd)
+	}
+	return clean, nil
+}
+
+// UpdateQuickCommands replaces a repository's pinned commands.
+func (s *Service) UpdateQuickCommands(id string, commands []domain.QuickCommand) ([]domain.QuickCommand, error) {
+	clean, err := CleanQuickCommands(commands, s.GlobalCommand)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := s.MutateRepository(id, func(repo *domain.Repository) { repo.QuickCommands = clean })
+	if err != nil {
+		return nil, err
+	}
+	return repo.QuickCommands, nil
+}
+
 // MaxAliasLength bounds repository aliases.
 const MaxAliasLength = 200
 
@@ -630,6 +699,7 @@ func cloneRepo(repo domain.Repository) domain.Repository {
 	if repo.CommandSequence != nil {
 		repo.CommandSequence = append([]domain.CommandStep{}, repo.CommandSequence...)
 	}
+	repo.QuickCommands = append([]domain.QuickCommand{}, repo.QuickCommands...)
 	return repo
 }
 

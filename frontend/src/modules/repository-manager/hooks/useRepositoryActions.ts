@@ -3,7 +3,7 @@ import { errorMessage } from "@/lib/bridge"
 import { useI18n } from "@/lib/i18n"
 import { useNotifications } from "@/state/notifications"
 import { repositoryApi } from "../api"
-import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
+import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type QuickCommand, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
 import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
 
@@ -107,6 +107,17 @@ export function useRepositoryActions() {
         })
         if (ok && !quiet) notify(t.sequence.saved, { tone: "success" })
         return ok
+      },
+      /** Replaces a repository's pinned quick commands; true when saved. */
+      saveQuickCommands: async (repo: Repository, commands: QuickCommand[]) =>
+        (await guard(async () => { await repositoryApi.saveQuickCommands(repo.id, commands); return true })) ?? false,
+      /** Starts a pinned command in the background; the run is listed in the Background drawer. */
+      async runQuick(repo: Repository, quick: QuickCommand, global?: GlobalCommand) {
+        const run = await guard(() => quick.script
+          ? repositoryApi.runScript(repo.id, quick.script)
+          : repositoryApi.runCommand(repo.id, global ? global.command : quick.command, quick.label))
+        if (run) processStore.markBackground(run.id, quick.id)
+        return trackRun(run)
       },
       /** Replaces the workspace's global commands; true when saved. */
       async saveGlobalCommands(commands: GlobalCommand[]) {

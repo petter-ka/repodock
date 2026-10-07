@@ -12,7 +12,7 @@ export const hu: Messages = {
     count: "{count} repository", add: "Repository hozzáadása", filter: "Repositoryk szűrése…", newGroup: "Új csoport",
     emptyGroup: "Ebben a csoportban nincs repository", noMatches: "Nincs találat", groupActions: "Csoport műveletek",
     repoActions: "Repository műveletek", addHere: "Hozzáadás ehhez a csoporthoz", moveTo: "Áthelyezés csoportba", renameGroup: "Csoport átnevezése",
-    moveGroupUp: "Csoport feljebb", moveGroupDown: "Csoport lejjebb", dragGroup: "Húzd a csoportok átrendezéséhez", renameRepo: "Átnevezés (alias)…", folder: "mappa", moveUp: "Fel", moveDown: "Le", dropHere: "Húzd ide az áthelyezéshez", deleteGroup: "Csoport törlése", running: "{count} fut",
+    resize: "Oldalsáv átméretezése", resizeHint: "Húzd az átméretezéshez · dupla kattintás: alaphelyzet", moveGroupUp: "Csoport feljebb", moveGroupDown: "Csoport lejjebb", dragGroup: "Húzd a csoportok átrendezéséhez", renameRepo: "Átnevezés (alias)…", folder: "mappa", moveUp: "Fel", moveDown: "Le", dropHere: "Húzd ide az áthelyezéshez", deleteGroup: "Csoport törlése", running: "{count} fut",
     runningSince: "{count} fut · legutóbbi: {label}, indult: {time}", lastRunExit: "Utolsó parancs: {label} — {status}, kilépési kód: {code} ({time})", problem: "package.json hiba",
   },
   groupRun: {
@@ -83,6 +83,13 @@ export const hu: Messages = {
   scripts: {
     title: "Scriptek", empty: "Ebben a package.json-ban nincs script.", unknown: "A scriptek még nem ismertek — javítsd a fenti problémát a felderítésükhöz.", runningHint: "Fut", runScript: "„{name}” futtatása",
     runningCount: "{count} fut", plainFolder: "Sima mappa — nincs package.json, így scriptek sincsenek. Futtass egyéni vagy globális parancsokat lent.", customPlaceholder: "Shell parancs futtatása itt: {name}…", runHint: "Enter: futtatás · ↑ ↓ előzmények",
+  },
+  quick: {
+    title: "Gyors", empty: "Húzz ide scripteket, vagy tűzz ki parancsokat a + gombbal", run: "„{name}” futtatása a háttérben", runHint: "Kattints a háttérben futtatáshoz · húzd az átrendezéshez",
+    remove: "„{name}” levétele", add: "Parancs kitűzése", addScript: "Script", addGlobal: "Globális parancs", addCommand: "Egyéni parancs…",
+    addCommandTitle: "Egyéni parancs kitűzése", commandLabel: "Shell parancs (egy sor)", pin: "Kitűzés",
+    background: "Háttér", openBackground: "Háttérfutások megjelenítése", backgroundTitle: "Háttérfutások",
+    backgroundHint: "A Gyors chipekből indított parancsok. A fiók bezárása után is tovább futnak.", backgroundEmpty: "Még semmi nem futott a háttérben. Kattints egy Gyors chipre az indításhoz.",
   },
   quickSequence: { title: "Szekvencia", empty: "Nincs engedélyezett lépés — állíts be egy szekvenciát", runStep: "„{name}” lépés futtatása", edit: "Szekvencia szerkesztése" },
   process: {

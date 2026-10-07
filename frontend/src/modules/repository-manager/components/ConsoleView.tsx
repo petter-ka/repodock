@@ -30,14 +30,17 @@ const segmentsOf = (line: ConsoleLine) => {
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
 
-export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSelectRun, onClear }: {
+export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSelectRun, onClear, runsOnly = false }: {
   /** undefined shows output from every repository */
   repositoryId?: string
   runs: Run[]
   repoNames?: Map<string, string>
   selectedRunId: string | null
   onSelectRun: (runId: string | null) => void
-  onClear: () => void
+  /** omitted hides the clear button */
+  onClear?: () => void
+  /** hide the "All runs" choice (the view is about the given runs only) */
+  runsOnly?: boolean
 }) {
   const { t, f } = useI18n()
   const { notify } = useNotifications()
@@ -131,7 +134,7 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
           onChange={(event) => onSelectRun(event.target.value || null)}
           className="ml-2 h-7 max-w-[240px] rounded-md border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <option value="">{t.console.allRuns}</option>
+          {!runsOnly && <option value="">{t.console.allRuns}</option>}
           {[...runs].reverse().map((run) => (
             <option key={run.id} value={run.id}>
               {repoNames ? `${repoNames.get(run.repositoryId) ?? ""} · ` : ""}{run.label} — {t.process.status[run.status]}
@@ -155,9 +158,11 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
         <Tooltip label={t.console.copy}>
           <Button size="icon-sm" variant="ghost" aria-label={t.console.copy} disabled={!lines.length} onClick={copy}><Copy /></Button>
         </Tooltip>
-        <Tooltip label={t.console.clear}>
-          <Button size="icon-sm" variant="ghost" aria-label={t.console.clear} onClick={onClear}><Trash2 /></Button>
-        </Tooltip>
+        {onClear && (
+          <Tooltip label={t.console.clear}>
+            <Button size="icon-sm" variant="ghost" aria-label={t.console.clear} onClick={onClear}><Trash2 /></Button>
+          </Tooltip>
+        )}
       </div>
 
       <div className="relative min-h-0 flex-1 bg-console">

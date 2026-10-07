@@ -31,11 +31,11 @@ export function GlobalCommandsDialog({ open, actions, onOpenChange }: {
     if (open) setDraft(structuredClone(workspace.globalCommands))
   }, [open, saved]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // How many saved sequence steps reference each command.
+  // How many saved sequence steps and quick commands reference each command.
   const usage = useMemo(() => {
     const counts = new Map<string, number>()
     for (const repo of workspace.repositories) {
-      for (const step of repo.commandSequence ?? []) {
+      for (const step of [...(repo.commandSequence ?? []), ...repo.quickCommands]) {
         if (!step.script && step.globalCommand) counts.set(step.globalCommand, (counts.get(step.globalCommand) ?? 0) + 1)
       }
     }

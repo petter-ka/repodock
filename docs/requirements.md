@@ -44,6 +44,8 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-20 | Reorder repositories and move them between groups, and reorder sequence steps, by drag and drop | P1 |
 | FR-21 | Reorder groups by drag and drop | P1 |
 | FR-22 | Rename a repository with an alias; register the same folder several times and plain folders without package.json | P1 |
+| FR-23 | Pin scripts/commands as Quick chips per repository, run them in the background in a separate drawer; include them in export/import | P1 |
+| FR-24 | Resize the repository sidebar | P2 |
 
 ## Non-functional requirements
 
@@ -115,6 +117,12 @@ Needs enough observability to diagnose runaway local dev processes.
   - adding an already registered folder creates another record named "<name> (2)", "(3)", …; parent and child folders can be added;
   - a folder without package.json is added as a plain folder: no scripts, no warning, a "folder" label; custom and global commands and sequences work;
   - exports carry group order, member order, aliases, duplicate/nested/plain folders and full sequences — step order and the enabled selection (document version 3); importing into an empty workspace reproduces the same sidebar; re-importing skips folders that were already registered.
+
+- FR-23 / FR-24 (2026-10-07): see ADR-0017. Acceptance criteria:
+  - script chips can be dragged onto the Quick row; scripts, global commands and custom commands can also be pinned with +; chips can be reordered by dragging and unpinned with ×;
+  - clicking a chip starts it and opens the Background drawer with its output, process stats and stop/restart; closing the drawer keeps it running;
+  - quick commands are exported and imported (with their global command references), shown in the import preview and counted in the shell-command warning;
+  - the sidebar width can be changed by dragging its edge or with the keyboard, and is remembered.
 
 ## Empty command semantics
 

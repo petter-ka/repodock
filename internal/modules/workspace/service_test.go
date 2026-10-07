@@ -315,3 +315,27 @@ func TestCleanGlobalCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanQuickCommands(t *testing.T) {
+	lookup := func(id string) (domain.GlobalCommand, bool) {
+		return domain.GlobalCommand{ID: id, Name: "Clean"}, id == "g"
+	}
+	clean, err := CleanQuickCommands([]domain.QuickCommand{
+		{ID: "a", Script: " build ", Command: "ignored"},
+		{ID: "a", GlobalCommand: "g", Command: "ignored"},
+		{Command: " git status "},
+		{Label: "nothing to run"},
+	}, lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clean) != 3 {
+		t.Fatalf("clean = %+v", clean)
+	}
+	if clean[0].Label != "build" || clean[0].Command != "" || clean[1].Label != "Clean" || clean[1].Command != "" || clean[1].ID == "a" || clean[2].Label != "git status" {
+		t.Fatalf("clean = %+v", clean)
+	}
+	if _, err := CleanQuickCommands([]domain.QuickCommand{{Command: "a\nrm -rf /"}}, lookup); err == nil {
+		t.Fatal("multi-line commands must be rejected")
+	}
+}

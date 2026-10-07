@@ -6,12 +6,14 @@ import { useI18n } from "@/lib/i18n"
 import { readPreference, writePreference } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 import type { Repository } from "../domain"
+import { SCRIPT_DRAG_TYPE } from "./dragTypes"
 
 const EXPANDED_KEY = "scripts.expanded"
 
 /**
  * One chip per package.json script, in declaration order. Click runs it.
  * Collapsed by default; the open/closed choice is remembered per device.
+ * Chips can be dragged onto the Quick row to pin them.
  */
 export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; runningLabels: Set<string>; onRun: (script: string) => void }) {
   const { t, f } = useI18n()
@@ -46,6 +48,11 @@ export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; 
             return (
               <Tooltip key={script.name} label={<span className="font-mono">{script.command}</span>}>
                 <button
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "copy"
+                    event.dataTransfer.setData(SCRIPT_DRAG_TYPE, script.name)
+                  }}
                   onClick={() => onRun(script.name)}
                   aria-label={f(t.scripts.runScript, { name: script.name })}
                   className={cn(

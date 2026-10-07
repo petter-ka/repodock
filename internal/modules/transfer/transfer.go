@@ -22,8 +22,8 @@ const (
 	Format = "repodock.workspace-export"
 	// Version is the current export document version. Version 2 added
 	// globalCommands and the step globalCommand reference; version 3 added
-	// the repository alias and the plain-folder flag. Older documents are
-	// still read.
+	// the repository alias, the plain-folder flag and quick commands. Older
+	// documents are still read.
 	Version = 3
 	// UnknownPackageManager is the placeholder of an imported repository
 	// that expects a package.json, until its first refresh.
@@ -32,6 +32,8 @@ const (
 	MaxDocumentSize = 4 << 20
 	maxNameLength   = 200
 	maxSteps        = 200
+	// maxQuickCommands mirrors workspace.MaxQuickCommands.
+	maxQuickCommands = 100
 )
 
 // Document is the on-disk export format. Field names are part of the file
@@ -61,6 +63,9 @@ type DocumentRepository struct {
 	// 3+). Without it, an imported folder that has no package.json is
 	// reported as a problem, as in versions 1–2.
 	PlainFolder bool `json:"plainFolder,omitempty"`
+	// QuickCommands are the pinned chips (version 3+). GlobalCommand refers
+	// to the document's globalCommands[].id, as in steps.
+	QuickCommands []domain.QuickCommand `json:"quickCommands,omitempty"`
 	// Path uses forward slashes; a leading "~/" means the user's home folder.
 	Path            string               `json:"path"`
 	CommandSequence []domain.CommandStep `json:"commandSequence"`
@@ -93,7 +98,7 @@ func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (
 			if repo.CommandSequence == nil {
 				steps = nil
 			}
-			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Alias: repo.Alias, PlainFolder: repo.PackageManager == "", Path: portablePath(repo.Path, home), CommandSequence: steps})
+			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Alias: repo.Alias, PlainFolder: repo.PackageManager == "", QuickCommands: quickOrNil(repo.QuickCommands), Path: portablePath(repo.Path, home), CommandSequence: steps})
 		}
 		doc.Groups = append(doc.Groups, out)
 	}
@@ -107,6 +112,11 @@ func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (
 			for _, step := range repo.CommandSequence {
 				if step.Script == "" && step.GlobalCommand != "" {
 					used[step.GlobalCommand] = true
+				}
+			}
+			for _, cmd := range repo.QuickCommands {
+				if cmd.Script == "" && cmd.GlobalCommand != "" {
+					used[cmd.GlobalCommand] = true
 				}
 			}
 		}
@@ -182,8 +192,19 @@ func Parse(data []byte) (Document, error) {
 			if strings.TrimSpace(repo.Path) == "" {
 				return doc, fmt.Errorf("%s: path is empty", where)
 			}
-			if (repo.Alias != "" || repo.PlainFolder) && doc.Version < 3 {
-				return doc, fmt.Errorf("%s: aliases and plain folders require export version 3", where)
+			if (repo.Alias != "" || repo.PlainFolder || len(repo.QuickCommands) > 0) && doc.Version < 3 {
+				return doc, fmt.Errorf("%s: aliases, plain folders and quick commands require export version 3", where)
+			}
+			if len(repo.QuickCommands) > maxQuickCommands {
+				return doc, fmt.Errorf("%s: more than %d quick commands", where, maxQuickCommands)
+			}
+			for _, cmd := range repo.QuickCommands {
+				if strings.ContainsAny(cmd.Label+cmd.Script+cmd.GlobalCommand+cmd.Command, "\r\n\x00") {
+					return doc, fmt.Errorf("%s: quick command %q contains line breaks or NUL bytes", where, cmd.Label)
+				}
+				if cmd.Script == "" && cmd.GlobalCommand != "" && !globals[cmd.GlobalCommand] {
+					return doc, fmt.Errorf("%s: quick command %q references an unknown global command", where, cmd.Label)
+				}
 			}
 			if repo.Alias != "" {
 				if err := validName(repo.Alias); err != nil || strings.ContainsAny(repo.Alias, "\r\n\x00") {
@@ -265,7 +286,13 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 				r.Status = domain.ImportNew
 				preview.New++
 			}
+			r.QuickCommands = sanitizeQuick(repo.QuickCommands, nil)
 			if r.Status == domain.ImportNew || r.Status == domain.ImportMissing {
+				for _, cmd := range r.QuickCommands {
+					if cmd.Script == "" && cmd.GlobalCommand == "" && cmd.Command != "" {
+						preview.ShellCommands++
+					}
+				}
 				for _, step := range r.Steps {
 					if step.Script == "" && step.GlobalCommand == "" && step.Command != "" {
 						preview.ShellCommands++
@@ -344,6 +371,7 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 				ID: uuid.NewString(), Name: strings.TrimSpace(repo.Name), Alias: strings.TrimSpace(repo.Alias), Path: path, GroupID: target.ID,
 				Scripts: []domain.Script{}, EnvFiles: []string{},
 				CommandSequence: sanitizeSteps(repo.CommandSequence, opts.KeepStepsEnabled, globalIDs),
+				QuickCommands:   sanitizeQuick(repo.QuickCommands, globalIDs),
 			}
 			if record.Name == "" {
 				record.Name = filepath.Base(path)
@@ -514,4 +542,38 @@ func displayName(repo DocumentRepository) string {
 		return alias
 	}
 	return repo.Name
+}
+
+// sanitizeQuick gives imported quick commands fresh IDs and maps global
+// command references to local IDs (nil keeps document IDs, for previews).
+// Entries left without anything to run are dropped.
+func sanitizeQuick(commands []domain.QuickCommand, globalIDs map[string]string) []domain.QuickCommand {
+	out := []domain.QuickCommand{}
+	for _, cmd := range commands {
+		cmd.ID = uuid.NewString()
+		cmd.Label = strings.TrimSpace(cmd.Label)
+		cmd.Script = strings.TrimSpace(cmd.Script)
+		cmd.GlobalCommand = strings.TrimSpace(cmd.GlobalCommand)
+		cmd.Command = strings.TrimSpace(cmd.Command)
+		if cmd.Script != "" {
+			cmd.GlobalCommand, cmd.Command = "", ""
+		} else if cmd.GlobalCommand != "" {
+			cmd.Command = ""
+			if globalIDs != nil {
+				cmd.GlobalCommand = globalIDs[cmd.GlobalCommand]
+			}
+		}
+		if cmd.Script == "" && cmd.GlobalCommand == "" && cmd.Command == "" {
+			continue
+		}
+		out = append(out, cmd)
+	}
+	return out
+}
+
+func quickOrNil(commands []domain.QuickCommand) []domain.QuickCommand {
+	if len(commands) == 0 {
+		return nil
+	}
+	return append([]domain.QuickCommand{}, commands...)
 }

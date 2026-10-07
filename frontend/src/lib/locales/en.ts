@@ -12,7 +12,7 @@ export const en = {
     count: "{count} repositories", add: "Add repository", filter: "Filter repositories…", newGroup: "New group",
     emptyGroup: "No repositories in this group", noMatches: "No matches", groupActions: "Group actions",
     repoActions: "Repository actions", addHere: "Add repository here", moveTo: "Move to group", renameGroup: "Rename group",
-    moveGroupUp: "Move group up", moveGroupDown: "Move group down", dragGroup: "Drag to reorder groups", renameRepo: "Rename (alias)…", folder: "folder", moveUp: "Move up", moveDown: "Move down", dropHere: "Drop here to move", deleteGroup: "Delete group", running: "{count} running",
+    resize: "Resize sidebar", resizeHint: "Drag to resize · double-click to reset", moveGroupUp: "Move group up", moveGroupDown: "Move group down", dragGroup: "Drag to reorder groups", renameRepo: "Rename (alias)…", folder: "folder", moveUp: "Move up", moveDown: "Move down", dropHere: "Drop here to move", deleteGroup: "Delete group", running: "{count} running",
     runningSince: "{count} running · latest: {label} since {time}", lastRunExit: "Last command: {label} — {status}, exit {code} ({time})", problem: "package.json problem",
   },
   groupRun: {
@@ -82,6 +82,13 @@ export const en = {
   scripts: {
     title: "Scripts", empty: "This package.json has no scripts.", unknown: "Scripts are not known yet — fix the problem above to discover them.", runningHint: "Running", runScript: "Run “{name}”",
     runningCount: "{count} running", plainFolder: "Plain folder — no package.json, so no scripts. Run custom or global commands below.", customPlaceholder: "Run a shell command in {name}…", runHint: "Enter to run · ↑ ↓ history",
+  },
+  quick: {
+    title: "Quick", empty: "Drag scripts here, or use + to pin commands", run: "Run “{name}” in the background", runHint: "Click to run in the background · drag to reorder",
+    remove: "Unpin “{name}”", add: "Pin a command", addScript: "Script", addGlobal: "Global command", addCommand: "Custom command…",
+    addCommandTitle: "Pin a custom command", commandLabel: "Shell command (single line)", pin: "Pin",
+    background: "Background", openBackground: "Show background runs", backgroundTitle: "Background runs",
+    backgroundHint: "Commands started from Quick chips. Closing this drawer keeps them running.", backgroundEmpty: "Nothing has run in the background yet. Click a Quick chip to start one.",
   },
   quickSequence: { title: "Sequence", empty: "No enabled steps — set up a sequence", runStep: "Run step “{name}”", edit: "Edit sequence" },
   process: {

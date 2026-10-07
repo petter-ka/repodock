@@ -46,9 +46,12 @@ type Repository struct {
 	PackageManager  string        `json:"packageManager"`
 	Scripts         []Script      `json:"scripts"`
 	CommandSequence []CommandStep `json:"commandSequence"`
-	EnvFiles        []string      `json:"envFiles"`
-	GroupID         string        `json:"groupId"`
-	LastRefreshedAt string        `json:"lastRefreshedAt"`
+	// QuickCommands are pinned scripts/commands shown as chips under the
+	// sequence line; each click starts one in the background (ADR-0017).
+	QuickCommands   []QuickCommand `json:"quickCommands"`
+	EnvFiles        []string       `json:"envFiles"`
+	GroupID         string         `json:"groupId"`
+	LastRefreshedAt string         `json:"lastRefreshedAt"`
 	// Problem describes why the last refresh could not read package.json.
 	// Empty when the repository metadata is healthy.
 	Problem string `json:"problem"`
@@ -96,6 +99,17 @@ type CommandStep struct {
 	// Background steps are started and the sequence continues without waiting
 	// for them to exit (typical for dev servers and watchers).
 	Background bool `json:"background"`
+}
+
+// QuickCommand is a pinned script, global command or shell command. Exactly
+// one of Script, GlobalCommand and Command is set.
+type QuickCommand struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Script string `json:"script"`
+	// GlobalCommand is the ID of a Workspace.GlobalCommands entry.
+	GlobalCommand string `json:"globalCommand"`
+	Command       string `json:"command"`
 }
 
 type RunStatus string
@@ -250,6 +264,8 @@ type ImportRepositoryPreview struct {
 	Path   string        `json:"path"`
 	Status ImportStatus  `json:"status"`
 	Steps  []CommandStep `json:"steps"`
+	// QuickCommands keep document global command IDs, like Steps.
+	QuickCommands []QuickCommand `json:"quickCommands"`
 }
 
 // ImportGlobalCommandStatus describes what importing one global command does.

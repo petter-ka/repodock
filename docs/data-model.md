@@ -22,6 +22,7 @@ Workspace
     ├── path                  # absolute; NOT unique — several records may share a folder
     ├── packageManager        # npm | pnpm | yarn | bun; "" = plain folder (no package.json)
     ├── scripts[]             # { name, command } in package.json declaration order
+    ├── quickCommands[]       # pinned chips { id, label, script | globalCommand | command } — ADR-0017
     ├── commandSequence[]     # null = never configured
     │   ├── id, label
     │   ├── script            # package script name (resolved at run time)
@@ -73,6 +74,7 @@ ExportDocument
         ├── name
         ├── alias       # optional (version 3+)
         ├── plainFolder # optional (version 3+): registered without package.json
+        ├── quickCommands[]     # optional (version 3+); globalCommand → globalCommands[].id
         ├── path        # forward slashes; "~/" = home folder; already registered folders are skipped on import
         └── commandSequence[]   # same shape as the workspace; null = never configured;
                                 # step globalCommand references globalCommands[].id

@@ -40,6 +40,8 @@ export class ProcessStore {
   /** one cached run view, rebuilt when output changes */
   private runView: { runId: string; stamp: number; lines: ConsoleLine[] } | null = null
   private outputStamp = 0
+  /** runId → quick command ID, for runs started from a quick command chip */
+  private background = new Map<string, string>()
   /** runId → prompt text while the run's latest output is an unanswered prompt */
   private prompts = new Map<string, string>()
   private listeners = new Set<() => void>()
@@ -143,6 +145,7 @@ export class ProcessStore {
     finished.sort((a, b) => a.startedAt.localeCompare(b.startedAt))
     for (const run of finished.slice(0, finished.length - RETAIN_FINISHED_RUNS)) {
       this.runs.delete(run.id)
+      this.background.delete(run.id)
       this.snapshots.delete(run.id)
       this.prompts.delete(run.id)
     }
@@ -206,6 +209,7 @@ export class ProcessStore {
     if (!ids.size) return
     ids.forEach((id) => {
       this.runs.delete(id)
+      this.background.delete(id)
       this.snapshots.delete(id)
       this.prompts.delete(id)
     })
@@ -214,6 +218,22 @@ export class ProcessStore {
     this.byRepo.forEach((buffer) => buffer.retain(keep))
     this.outputStamp++
     this.changed()
+  }
+
+  /** Marks a run as started from a quick command (shown in the Background drawer). */
+  markBackground(runId: string, quickId: string) {
+    this.background.set(runId, quickId)
+    this.changed()
+  }
+
+  /** Quick-command runs of a repository, oldest first. */
+  backgroundRuns(repositoryId: string): Run[] {
+    return this.runsFor(repositoryId).filter((run) => this.background.has(run.id))
+  }
+
+  /** The quick command a run was started from, if any. */
+  quickCommandOf(runId: string) {
+    return this.background.get(runId)
   }
 
   run(id: string) {

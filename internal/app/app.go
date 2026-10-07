@@ -214,6 +214,16 @@ func (a *App) SetGroupRunMode(id string, mode string) error {
 	return a.persist()
 }
 
+// SaveQuickCommands replaces a repository's pinned quick commands and
+// returns the normalized list.
+func (a *App) SaveQuickCommands(repoID string, commands []domain.QuickCommand) ([]domain.QuickCommand, error) {
+	saved, err := a.workspace.UpdateQuickCommands(repoID, commands)
+	if err != nil {
+		return nil, err
+	}
+	return saved, a.persist()
+}
+
 // RenameRepository sets a repository's alias (display name); a blank alias
 // restores the discovered name.
 func (a *App) RenameRepository(id string, alias string) error {

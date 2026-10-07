@@ -1,5 +1,5 @@
 export type {
-  CommandStep, EnvFile, FolderCheck, GlobalCommand, Group, ImportGlobalCommandPreview, ImportOptions, ImportPreview, ImportRepositoryPreview, ImportResult, GroupRepoState, GroupRun, GroupRunMode, ProcessExit, ProcessOutput, ProcessSnapshot, Repository, Run, RunStatus, Script,
+  CommandStep, QuickCommand, EnvFile, FolderCheck, GlobalCommand, Group, ImportGlobalCommandPreview, ImportOptions, ImportPreview, ImportRepositoryPreview, ImportResult, GroupRepoState, GroupRun, GroupRunMode, ProcessExit, ProcessOutput, ProcessSnapshot, Repository, Run, RunStatus, Script,
   SequenceRun, SequenceStepState, StepStatus, Workspace,
 } from "@/lib/contracts"
 export { displayName, isActive, isZeroTime } from "@/lib/contracts"

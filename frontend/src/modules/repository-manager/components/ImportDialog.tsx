@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, CheckSquare, FileCode2, FolderGit2, FolderOpen, FolderX, Globe, Loader2, ShieldAlert, Square as SquareIcon, Terminal, XCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle2, CheckSquare, FileCode2, FolderGit2, FolderOpen, FolderX, Globe, Loader2, ShieldAlert, Square as SquareIcon, Terminal, XCircle, Zap } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge, type BadgeVariant } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -159,6 +159,20 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                                 </li>
                               ))}
                             </ul>
+                          )}
+                          {active && (repo.quickCommands ?? []).length > 0 && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1 pl-6 text-[11px]">
+                              <span className="flex items-center gap-1 text-muted-foreground"><Zap className="size-3" /> {t.quick.title}:</span>
+                              {(repo.quickCommands ?? []).map((q, qi) => {
+                                const global = q.globalCommand ? globalById.get(q.globalCommand) : undefined
+                                const text = q.script ? `run ${q.script}` : global ? global.command : q.command
+                                return (
+                                  <span key={qi} title={text} className={cn("max-w-[220px] truncate rounded-full border border-border px-2 py-0.5 font-mono", !q.script && !q.globalCommand && "border-warning/50 text-warning")}>
+                                    {q.label || q.script || global?.name || q.command}
+                                  </span>
+                                )
+                              })}
+                            </div>
                           )}
                         </li>
                       )

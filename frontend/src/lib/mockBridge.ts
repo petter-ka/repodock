@@ -3,7 +3,7 @@
 // sequences; it never touches the real filesystem.
 import type { Backend } from "./bridge"
 import type {
-  AppBinding, CommandStep, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
+  AppBinding, CommandStep, QuickCommand, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
 } from "./contracts"
 import { displayName } from "./contracts"
 
@@ -13,7 +13,7 @@ const uid = () => crypto.randomUUID()
 
 function seedWorkspace(): Workspace {
   const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[]): Repository => ({
-    id, name, alias: "", path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
+    id, name, alias: "", quickCommands: [], path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
     scripts: scripts.map(([n, command]) => ({ name: n, command })),
     commandSequence: scripts.map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, globalCommand: "", command: "", enabled: n === "dev", background: n === "dev" })),
   })
@@ -64,7 +64,7 @@ export function createMockBackend(): Backend {
     version: number
     exportedAt: string
     globalCommands?: GlobalCommand[]
-    groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; alias?: string; plainFolder?: boolean; path: string; commandSequence: CommandStep[] | null }> }>
+    groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; alias?: string; plainFolder?: boolean; quickCommands?: QuickCommand[]; path: string; commandSequence: CommandStep[] | null }> }>
   }
   const parseExport = (path: string): ExportDoc => {
     const text = importFiles.get(path)
@@ -244,7 +244,7 @@ export function createMockBackend(): Backend {
         for (let n = 2; !alias; n++) if (!taken.has(`${name} (${n})`.toLowerCase())) alias = `${name} (${n})`
       }
       const repo: Repository = {
-        id: uid(), name, alias, path, packageManager: "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(), problem: "",
+        id: uid(), name, alias, path, packageManager: "npm", groupId: group.id, envFiles: [], quickCommands: [], lastRefreshedAt: now(), problem: "",
         scripts: [{ name: "dev", command: "node server.js" }, { name: "test", command: "node --test" }],
         commandSequence: [{ id: uid(), label: "dev", script: "dev", globalCommand: "", command: "", enabled: false, background: true }],
       }
@@ -307,7 +307,7 @@ export function createMockBackend(): Backend {
         format: "repodock.workspace-export", version: 3, exportedAt: now(), ...(globals.length ? { globalCommands: globals } : {}),
         groups: groups.map((g) => ({
           name: g.name, runMode: g.runMode, collapsed: g.collapsed,
-          repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, ...(r.alias ? { alias: r.alias } : {}), ...(r.packageManager ? {} : { plainFolder: true }), path: r.path, commandSequence: r.commandSequence })),
+          repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, ...(r.alias ? { alias: r.alias } : {}), ...(r.packageManager ? {} : { plainFolder: true }), ...(r.quickCommands.length ? { quickCommands: r.quickCommands } : {}), path: r.path, commandSequence: r.commandSequence })),
         })),
       }
       const name = groupIDs.length === 1 ? `repodock-${groups[0]?.name ?? "group"}.json` : "repodock-workspace.json"
@@ -354,7 +354,8 @@ export function createMockBackend(): Backend {
               preview.new++
               preview.shellCommands += (repo.commandSequence ?? []).filter((s) => !s.script && !s.globalCommand && s.command).length
             }
-            return { name: repo.alias || repo.name, path: repo.path, status, steps: repo.commandSequence }
+            if (status === "new" || status === "missing") preview.shellCommands += (repo.quickCommands ?? []).filter((q) => !q.script && !q.globalCommand && q.command).length
+            return { name: repo.alias || repo.name, path: repo.path, status, steps: repo.commandSequence, quickCommands: repo.quickCommands ?? [] }
           }),
         })
       }
@@ -397,6 +398,7 @@ export function createMockBackend(): Backend {
           const record: Repository = {
             id: uid(), name: repo.name, alias: repo.alias?.trim() ?? "", path: repo.path, packageManager: repo.plainFolder ? "" : "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
             problem: folderExists(repo.path) ? "" : `folder not found: ${repo.path}`, scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),
+            quickCommands: (repo.quickCommands ?? []).map((q) => ({ ...q, id: uid(), globalCommand: q.globalCommand ? globalIds.get(q.globalCommand) ?? "" : "" })),
             commandSequence: repo.commandSequence?.map((s) => ({
               ...s, id: uid(), enabled: options.keepStepsEnabled && s.enabled,
               globalCommand: s.globalCommand ? globalIds.get(s.globalCommand) ?? "" : "",
@@ -494,6 +496,15 @@ export function createMockBackend(): Backend {
       target.repositoryIds.splice(at, 0, id)
       repo.groupId = groupID
       changed()
+    },
+    async SaveQuickCommands(repoID, commands) {
+      const clean = commands
+        .map((q) => ({ ...q, label: q.label.trim(), script: q.script.trim(), globalCommand: q.script ? "" : q.globalCommand, command: q.script || q.globalCommand ? "" : q.command.trim() }))
+        .filter((q) => q.script || q.globalCommand || q.command)
+        .map((q) => ({ ...q, id: q.id || uid(), label: q.label || q.script || workspace.globalCommands.find((g) => g.id === q.globalCommand)?.name || q.command }))
+      findRepo(repoID).quickCommands = clean
+      changed()
+      return structuredClone(clean)
     },
     async SaveCommandSequence(repoID, steps: CommandStep[]) {
       findRepo(repoID).commandSequence = steps.map((s) => ({

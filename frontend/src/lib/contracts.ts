@@ -3,6 +3,9 @@
 
 export type Script = { name: string; command: string }
 
+/** A pinned script, global command or shell command (exactly one is set). */
+export type QuickCommand = { id: string; label: string; script: string; globalCommand: string; command: string }
+
 export type CommandStep = {
   id: string
   label: string
@@ -29,6 +32,8 @@ export type Repository = {
   scripts: Script[]
   /** null when the record never had a sequence */
   commandSequence: CommandStep[] | null
+  /** pinned chips under the sequence line (ADR-0017) */
+  quickCommands: QuickCommand[]
   envFiles: string[]
   groupId: string
   lastRefreshedAt: string
@@ -112,7 +117,7 @@ export type GroupRun = {
 }
 
 export type ImportStatus = "new" | "missing" | "existing" | "duplicate"
-export type ImportRepositoryPreview = { name: string; path: string; status: ImportStatus; steps: CommandStep[] | null }
+export type ImportRepositoryPreview = { name: string; path: string; status: ImportStatus; steps: CommandStep[] | null; quickCommands: QuickCommand[] | null }
 export type ImportGlobalCommandStatus = "new" | "existing" | "renamed"
 export type ImportGlobalCommandPreview = {
   /** document-local ID referenced by preview steps */
@@ -173,6 +178,7 @@ export type AppBinding = {
   AssignRepository(id: string, groupID: string): Promise<void>
   MoveRepository(id: string, groupID: string, index: number): Promise<void>
   RenameRepository(id: string, alias: string): Promise<void>
+  SaveQuickCommands(repoID: string, commands: QuickCommand[]): Promise<QuickCommand[]>
   MoveGroup(id: string, index: number): Promise<void>
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
   RunGroup(groupID: string): Promise<GroupRun>

@@ -14,6 +14,8 @@ import { RepoHeader } from "../components/RepoHeader"
 import { RepoSidebar } from "../components/RepoSidebar"
 import { ScriptChips } from "../components/ScriptChips"
 import { SequenceChips } from "../components/SequenceChips"
+import { QuickCommands } from "../components/QuickCommands"
+import { BackgroundSheet } from "../components/BackgroundSheet"
 import { SequenceSheet } from "../components/SequenceSheet"
 import { displayName, isActive, type Repository } from "../domain"
 import { useRepositoryActions } from "../hooks/useRepositoryActions"
@@ -61,7 +63,8 @@ function RepositoryPane({ repo, actions, commandRef }: {
 }) {
   const version = useProcessVersion()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [sheet, setSheet] = useState<"sequence" | "env" | null>(null)
+  const [sheet, setSheet] = useState<"sequence" | "env" | "background" | null>(null)
+  const [backgroundRunId, setBackgroundRunId] = useState<string | null>(null)
 
   const { runs, snapshots, sequence } = useMemo(() => {
     void version
@@ -69,6 +72,11 @@ function RepositoryPane({ repo, actions, commandRef }: {
     const snapshots = new Map(runs.map((run) => [run.id, processStore.snapshot(run.id)]).filter((e): e is [string, NonNullable<ReturnType<typeof processStore.snapshot>>] => !!e[1]))
     return { runs, snapshots, sequence: processStore.sequence(repo.id) }
   }, [version, repo.id])
+  const backgroundRuns = useMemo(() => {
+    void version
+    return processStore.backgroundRuns(repo.id)
+  }, [version, repo.id])
+  const runningQuickIds = useMemo(() => new Set(backgroundRuns.filter((run) => isActive(run.status)).map((run) => processStore.quickCommandOf(run.id)!)), [backgroundRuns])
 
   const active = runs.filter((run) => isActive(run.status))
   const runningLabels = useMemo(() => new Set(active.map((run) => run.label)), [active])
@@ -100,6 +108,19 @@ function RepositoryPane({ repo, actions, commandRef }: {
         onCancelSequence={(id) => void actions.cancelSequence(id)}
         onEdit={() => setSheet("sequence")}
       />
+      <QuickCommands
+        repo={repo}
+        runningQuickIds={runningQuickIds}
+        backgroundCount={backgroundRuns.length}
+        backgroundActive={runningQuickIds.size}
+        onRun={(quick, global) => void actions.runQuick(repo, quick, global).then((run) => {
+          if (!run) return
+          setBackgroundRunId(run.id)
+          setSheet("background")
+        })}
+        onOpenBackground={() => setSheet("background")}
+        onSave={(commands) => void actions.saveQuickCommands(repo, commands)}
+      />
       <CommandInput ref={commandRef} repo={repo} onRun={(command) => void actions.runCommand(repo, command)} />
       <ProcessStrip
         runs={runs}
@@ -114,6 +135,15 @@ function RepositoryPane({ repo, actions, commandRef }: {
       <ConsoleView repositoryId={repo.id} runs={runs} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} onClear={() => processStore.clearOutput(repo.id)} />
       <ProcessInput runs={runs} selectedRunId={selectedRunId} actions={actions} />
       <SequenceSheet repo={repo} open={sheet === "sequence"} sequence={sequence} actions={actions} onOpenChange={(open) => setSheet(open ? "sequence" : null)} />
+      <BackgroundSheet
+        repo={repo}
+        open={sheet === "background"}
+        runs={backgroundRuns}
+        selectedRunId={backgroundRunId}
+        onSelectRun={setBackgroundRunId}
+        actions={actions}
+        onOpenChange={(open) => setSheet(open ? "background" : null)}
+      />
       <EnvSheet repo={repo} open={sheet === "env"} actions={actions} onOpenChange={(open) => setSheet(open ? "env" : null)} />
     </>
   )

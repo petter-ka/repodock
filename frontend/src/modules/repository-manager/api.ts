@@ -1,6 +1,6 @@
 import { getBackend } from "@/lib/bridge"
 import type { EventMap } from "@/lib/contracts"
-import type { CommandStep, GlobalCommand, GroupRunMode, ImportOptions } from "./domain"
+import type { CommandStep, GlobalCommand, GroupRunMode, ImportOptions, QuickCommand } from "./domain"
 
 const api = () => getBackend().api
 
@@ -32,6 +32,7 @@ export const repositoryApi = {
   previewImport: (path: string) => api().PreviewImport(path),
   applyImport: (path: string, options: ImportOptions) => api().ApplyImport(path, options),
   saveCommandSequence: (repoID: string, steps: CommandStep[]) => api().SaveCommandSequence(repoID, steps),
+  saveQuickCommands: (repoID: string, commands: QuickCommand[]) => api().SaveQuickCommands(repoID, commands),
   saveGlobalCommands: (commands: GlobalCommand[]) => api().SaveGlobalCommands(commands),
   runScript: (repoID: string, scriptName: string) => api().RunScript(repoID, scriptName, scriptName),
   runCommand: (repoID: string, command: string, label = "") => api().RunCommand(repoID, command, label),
