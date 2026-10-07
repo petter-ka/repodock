@@ -52,6 +52,7 @@ Build a polished, native, local-first desktop command center for many local Node
 - Use Lucide icons.
 - Main layout: application rail → grouped repo sidebar → console/content.
 - The console should remain useful when no repository is selected.
+- Small tools are **mini apps**: a feature module registered in `frontend/src/app/miniApps.ts`, toggled from the rail, shown in a non-modal draggable `FloatingWindow` (ADR-0018). Never block the main UI with them.
 - Keyboard-friendly interactions are expected.
 
 ## Quality gates

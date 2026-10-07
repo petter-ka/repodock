@@ -40,3 +40,4 @@ Use the following template for new architectural decisions:
 | 0015 | Several records per folder, aliases, plain folders, group ordering | Accepted |
 | 0016 | TanStack Virtual console and constant-memory scrollback | Accepted |
 | 0017 | Quick commands, Background drawer, resizable sidebar | Accepted |
+| 0018 | Mini apps (floating tools) and the Kill process app | Accepted |

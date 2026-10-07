@@ -22,3 +22,18 @@ export type AppModule = {
   /** Pinned to the bottom of the rail (e.g. settings). */
   footer?: boolean
 }
+
+/**
+ * A small tool that opens in a floating, draggable, non-modal window over
+ * any view (ADR-0018). Toggled from the application rail; several can be
+ * open at once.
+ */
+export type MiniApp = {
+  id: string
+  icon: LucideIcon
+  label: (t: Messages) => string
+  /** window content; `close` closes the window */
+  View: React.ComponentType<{ close: () => void }>
+  /** window width in px */
+  width: number
+}

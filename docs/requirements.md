@@ -46,6 +46,7 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-22 | Rename a repository with an alias; register the same folder several times and plain folders without package.json | P1 |
 | FR-23 | Pin scripts/commands as Quick chips per repository, run them in the background in a separate drawer; include them in export/import | P1 |
 | FR-24 | Resize the repository sidebar | P2 |
+| FR-25 | Mini apps: toggleable, draggable, non-blocking floating tools; first app kills a process by PID or port | P1 |
 
 ## Non-functional requirements
 
@@ -123,6 +124,12 @@ Needs enough observability to diagnose runaway local dev processes.
   - clicking a chip starts it and opens the Background drawer with its output, process stats and stop/restart; closing the drawer keeps it running;
   - quick commands are exported and imported (with their global command references), shown in the import preview and counted in the shell-command warning;
   - the sidebar width can be changed by dragging its edge or with the keyboard, and is remembered.
+
+- FR-25 (2026-10-07): see ADR-0018. Acceptance criteria:
+  - mini apps are toggled from the application rail and open as floating windows that can be dragged (pointer or Alt+arrows), closed with Esc/×, and do not block the rest of the UI; positions are remembered;
+  - "Kill process" finds processes by port (listening TCP / bound UDP) or PID and shows name, PID, ports, command line, user and start time;
+  - killing requires an inline confirmation, sends SIGTERM and force-kills after 3 s if needed, optionally including child processes;
+  - system processes, RepoDock itself and its parent processes cannot be killed; a process started by RepoDock stops its run instead.
 
 ## Empty command semantics
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/example/repodock/internal/domain"
 	envmod "github.com/example/repodock/internal/modules/environment"
+	hostmod "github.com/example/repodock/internal/modules/hostprocess"
 	processmod "github.com/example/repodock/internal/modules/process"
 	repomod "github.com/example/repodock/internal/modules/repository"
 	seqmod "github.com/example/repodock/internal/modules/sequence"
@@ -33,6 +34,7 @@ type App struct {
 	env       *envmod.Service
 	process   *processmod.Manager
 	sequence  *seqmod.Runner
+	host      *hostmod.Service
 
 	reportMu sync.RWMutex
 	report   domain.StartupReport
@@ -52,6 +54,7 @@ func NewWith(ws *workspacemod.Service, opts processmod.Options) *App {
 		repo:      repomod.New(),
 		env:       envmod.New(),
 		process:   processmod.New(opts),
+		host:      hostmod.New(3 * time.Second),
 	}
 	a.sequence = seqmod.New(stepExecutor{a})
 	return a

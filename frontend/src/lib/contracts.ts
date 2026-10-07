@@ -3,6 +3,23 @@
 
 export type Script = { name: string; command: string }
 
+/** Any process on this machine (Kill process mini app, ADR-0018). PID 0 = owner of a port not visible. */
+export type HostProcess = {
+  pid: number
+  ppid: number
+  name: string
+  command: string
+  user: string
+  startedAt: string
+  ports: number[]
+  /** set when the process belongs to a RepoDock run (killing it stops that run) */
+  runId: string
+  repositoryId: string
+  /** why it cannot be killed from RepoDock; "" when it can */
+  protected: string
+}
+export type KillResult = { pid: number; signalled: number[]; forced: boolean; runId: string }
+
 /** A pinned script, global command or shell command (exactly one is set). */
 export type QuickCommand = { id: string; label: string; script: string; globalCommand: string; command: string }
 
@@ -179,6 +196,9 @@ export type AppBinding = {
   MoveRepository(id: string, groupID: string, index: number): Promise<void>
   RenameRepository(id: string, alias: string): Promise<void>
   SaveQuickCommands(repoID: string, commands: QuickCommand[]): Promise<QuickCommand[]>
+  FindProcessByPID(pid: number): Promise<HostProcess>
+  FindProcessesByPort(port: number): Promise<HostProcess[]>
+  KillHostProcess(pid: number, includeChildren: boolean): Promise<KillResult>
   MoveGroup(id: string, index: number): Promise<void>
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
   RunGroup(groupID: string): Promise<GroupRun>

@@ -3,7 +3,7 @@
 // sequences; it never touches the real filesystem.
 import type { Backend } from "./bridge"
 import type {
-  AppBinding, CommandStep, QuickCommand, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
+  AppBinding, CommandStep, HostProcess, QuickCommand, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
 } from "./contracts"
 import { displayName } from "./contracts"
 
@@ -58,6 +58,20 @@ export function createMockBackend(): Backend {
   const sequenceDone = new Map<string, Promise<void>>()
   const groupRuns = new Map<string, GroupRun & { cancelled?: boolean }>()
   const importFiles = new Map<string, string>()
+  const killedHost = new Set<number>()
+  // A few fake machine processes plus RepoDock's own running runs.
+  const hostProcesses = (): HostProcess[] => {
+    const base = { ppid: 1, user: "dev", startedAt: now(), runId: "", repositoryId: "", protected: "" }
+    const fixed: HostProcess[] = [
+      { ...base, pid: 4242, name: "node", command: "node /Users/dev/old-app/server.js", ports: [3000] },
+      { ...base, pid: 5150, name: "postgres", command: "/opt/homebrew/opt/postgresql@16/bin/postgres -D /opt/homebrew/var/postgresql@16", ports: [5432] },
+      { ...base, pid: 1, name: "launchd", command: "/sbin/launchd", ports: [], user: "root", protected: "system process" },
+    ].filter((p) => !killedHost.has(p.pid))
+    const managed = [...runs.values()].filter((r) => r.status === "running").map((r) => ({
+      ...base, pid: r.pid, name: "node", command: r.command, ports: [], runId: r.id, repositoryId: r.repositoryId,
+    }))
+    return [...fixed, ...managed]
+  }
 
   type ExportDoc = {
     format: string
@@ -496,6 +510,24 @@ export function createMockBackend(): Backend {
       target.repositoryIds.splice(at, 0, id)
       repo.groupId = groupID
       changed()
+    },
+    // Simulated host processes for the Kill process mini app.
+    async FindProcessByPID(pid) {
+      const found = hostProcesses().find((p) => p.pid === pid)
+      if (!found) throw `no process with PID ${pid}: process not found`
+      return found
+    },
+    async FindProcessesByPort(port) {
+      if (port < 1 || port > 65535) throw "port must be between 1 and 65535"
+      return hostProcesses().filter((p) => p.ports.includes(port))
+    },
+    async KillHostProcess(pid, includeChildren) {
+      const found = hostProcesses().find((p) => p.pid === pid)
+      if (!found) throw `no process with PID ${pid}: process not found`
+      if (found.protected) throw `refusing to kill PID ${pid}: ${found.protected}`
+      if (found.runId) { await api.StopProcess(found.runId); return { pid, signalled: [pid], forced: false, runId: found.runId } }
+      killedHost.add(pid)
+      return { pid, signalled: includeChildren ? [pid + 1, pid] : [pid], forced: false, runId: "" }
     },
     async SaveQuickCommands(repoID, commands) {
       const clean = commands

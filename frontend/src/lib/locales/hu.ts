@@ -84,6 +84,16 @@ export const hu: Messages = {
     title: "Scriptek", empty: "Ebben a package.json-ban nincs script.", unknown: "A scriptek még nem ismertek — javítsd a fenti problémát a felderítésükhöz.", runningHint: "Fut", runScript: "„{name}” futtatása",
     runningCount: "{count} fut", plainFolder: "Sima mappa — nincs package.json, így scriptek sincsenek. Futtass egyéni vagy globális parancsokat lent.", customPlaceholder: "Shell parancs futtatása itt: {name}…", runHint: "Enter: futtatás · ↑ ↓ előzmények",
   },
+  miniApps: { title: "Mini alkalmazások", show: "kattints a megnyitáshoz", hide: "kattints a bezáráshoz" },
+  killer: {
+    title: "Folyamat leállítása", mode: "Keresés", port: "Port", pid: "PID", find: "Keresés",
+    hint: "Nézd meg, mi figyel egy porton (pl. a :3000-en felejtett dev szerver), vagy keress PID alapján, majd állítsd le. Megerősítés nélkül semmi nem áll le.",
+    onPort: "{port}. port: {count} folyamat", result: "Folyamat", nothingOnPort: "A(z) {port}. porton semmi nem figyel.", gone: "A folyamat már nem fut.",
+    unknown: "(ismeretlen)", repodockRun: "RepoDock futás", user: "felhasználó: {user}", parent: "szülő: {pid}", started: "indult: {time}",
+    kill: "Leállítás", stopRun: "Futás leállítása", confirm: "Leállítod a(z) {pid} PID-ű folyamatot ({name})?", children: "A gyermekfolyamatokat is",
+    runHint: "A RepoDock indította — a futás a teljes folyamatfával együtt leáll.",
+    killed: "{pid} PID leállítva ({count} folyamat)", killedForced: "{pid} PID nem állt le időben, kényszerítve leállítva ({count} folyamat)", stoppedRun: "A(z) {pid} PID RepoDock futásának leállítása",
+  },
   quick: {
     title: "Gyors", empty: "Húzz ide scripteket, vagy tűzz ki parancsokat a + gombbal", run: "„{name}” futtatása a háttérben", runHint: "Kattints a háttérben futtatáshoz · húzd az átrendezéshez",
     remove: "„{name}” levétele", add: "Parancs kitűzése", addScript: "Script", addGlobal: "Globális parancs", addCommand: "Egyéni parancs…",

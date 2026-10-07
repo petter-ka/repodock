@@ -9,6 +9,11 @@
 5. Active process strip with PID / RAM / CPU / stop.
 6. Main console.
 
+## Mini apps
+
+- Toggles below the modules in the application rail (pressed state + dot while open). Each opens a floating, non-modal window (no overlay): drag by the title bar or Alt+arrows, Esc/× closes, clicking raises it. Positions persist per device.
+- **Kill process**: Port | PID switch, number field, Find. Results show name, PID, ports, command line, user, parent, start time; "RepoDock run" badge when the process belongs to a run. Protected processes show the reason instead of a Kill button. Kill opens an inline confirmation with "Also kill its child processes"; a RepoDock run shows "Stop run" instead.
+
 ## Interaction principles
 
 - Destructive operations should be obvious and reversible where possible.

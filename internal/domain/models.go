@@ -112,6 +112,37 @@ type QuickCommand struct {
 	Command       string `json:"command"`
 }
 
+// HostProcess describes any process on this machine, for the "Kill
+// process" mini app (ADR-0018). PID 0 means the owner of a port is unknown.
+type HostProcess struct {
+	PID       int    `json:"pid"`
+	PPID      int    `json:"ppid"`
+	Name      string `json:"name"`
+	Command   string `json:"command"`
+	User      string `json:"user"`
+	StartedAt string `json:"startedAt"`
+	// Ports this process listens on (TCP) or is bound to (UDP).
+	Ports []int `json:"ports"`
+	// RunID/RepositoryID are set when the process belongs to a RepoDock run;
+	// killing it then stops that run.
+	RunID        string `json:"runId"`
+	RepositoryID string `json:"repositoryId"`
+	// Protected explains why the process cannot be killed from RepoDock.
+	Protected string `json:"protected"`
+}
+
+// KillResult reports a kill request.
+type KillResult struct {
+	PID int `json:"pid"`
+	// Signalled lists the PIDs that received SIGTERM.
+	Signalled []int `json:"signalled"`
+	// Forced is true when something survived the grace period and was killed.
+	Forced bool `json:"forced"`
+	// RunID is set when the PID belonged to a RepoDock run, which was stopped
+	// through the process manager instead.
+	RunID string `json:"runId"`
+}
+
 type RunStatus string
 
 const (

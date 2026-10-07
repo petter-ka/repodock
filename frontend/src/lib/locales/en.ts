@@ -83,6 +83,16 @@ export const en = {
     title: "Scripts", empty: "This package.json has no scripts.", unknown: "Scripts are not known yet — fix the problem above to discover them.", runningHint: "Running", runScript: "Run “{name}”",
     runningCount: "{count} running", plainFolder: "Plain folder — no package.json, so no scripts. Run custom or global commands below.", customPlaceholder: "Run a shell command in {name}…", runHint: "Enter to run · ↑ ↓ history",
   },
+  miniApps: { title: "Mini apps", show: "click to open", hide: "click to close" },
+  killer: {
+    title: "Kill process", mode: "Find by", port: "Port", pid: "PID", find: "Find",
+    hint: "Find what is listening on a port (e.g. a dev server left on :3000) or look up a PID, then kill it. Nothing is killed without confirmation.",
+    onPort: "Port {port}: {count} process(es)", result: "Process", nothingOnPort: "Nothing is listening on port {port}.", gone: "The process is gone.",
+    unknown: "(unknown)", repodockRun: "RepoDock run", user: "user {user}", parent: "parent {pid}", started: "started {time}",
+    kill: "Kill", stopRun: "Stop run", confirm: "Kill PID {pid} ({name})?", children: "Also kill its child processes",
+    runHint: "Started by RepoDock — its run will be stopped with the whole process tree.",
+    killed: "PID {pid} terminated ({count} process(es))", killedForced: "PID {pid} did not exit in time and was force-killed ({count} process(es))", stoppedRun: "Stopping the RepoDock run of PID {pid}",
+  },
   quick: {
     title: "Quick", empty: "Drag scripts here, or use + to pin commands", run: "Run “{name}” in the background", runHint: "Click to run in the background · drag to reorder",
     remove: "Unpin “{name}”", add: "Pin a command", addScript: "Script", addGlobal: "Global command", addCommand: "Custom command…",

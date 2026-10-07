@@ -561,3 +561,33 @@ func TestExportImportPreservesEverything(t *testing.T) {
 		t.Fatalf("re-import = %+v", result)
 	}
 }
+
+func TestKillHostProcessStopsOwningRun(t *testing.T) {
+	if os.Getenv("GOOS") == "windows" {
+		t.Skip("POSIX shell")
+	}
+	a := newTestApp(t)
+	repo, err := a.AddRepository(fixture(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := a.RunCommand(repo.ID, "sleep 30", "sleeper")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := a.FindProcessByPID(run.PID)
+	if err != nil || info.RunID != run.ID || info.RepositoryID != repo.ID {
+		t.Fatalf("info = %+v, %v", info, err)
+	}
+	result, err := a.KillHostProcess(run.PID, false)
+	if err != nil || result.RunID != run.ID {
+		t.Fatalf("result = %+v, %v", result, err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(a.process.ActiveRuns()) > 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(a.process.ActiveRuns()) != 0 {
+		t.Fatal("the owning run must be stopped")
+	}
+}
