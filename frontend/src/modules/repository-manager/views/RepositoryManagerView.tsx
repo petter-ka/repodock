@@ -13,8 +13,9 @@ import { ProcessStrip } from "../components/ProcessStrip"
 import { RepoHeader } from "../components/RepoHeader"
 import { RepoSidebar } from "../components/RepoSidebar"
 import { ScriptChips } from "../components/ScriptChips"
+import { SequenceChips } from "../components/SequenceChips"
 import { SequenceSheet } from "../components/SequenceSheet"
-import { isActive, type Repository } from "../domain"
+import { displayName, isActive, type Repository } from "../domain"
 import { useRepositoryActions } from "../hooks/useRepositoryActions"
 import { useProcessVersion, useSelectedRepository, useWorkspaceState } from "../hooks/useStores"
 import { processStore } from "../store/processStore"
@@ -89,6 +90,16 @@ function RepositoryPane({ repo, actions, commandRef }: {
         onRelocate={() => void actions.relocate(repo)}
       />
       <ScriptChips repo={repo} runningLabels={runningLabels} onRun={(script) => void actions.runScript(repo, script).then((run) => run && setSelectedRunId(null))} />
+      <SequenceChips
+        repo={repo}
+        sequence={sequence}
+        runningLabels={runningLabels}
+        onRunScript={(script) => void actions.runScript(repo, script).then((run) => run && setSelectedRunId(null))}
+        onRunCommand={(command, label) => void actions.runCommand(repo, command, label).then((run) => run && setSelectedRunId(null))}
+        onRunSequence={() => void actions.runSequence(repo)}
+        onCancelSequence={(id) => void actions.cancelSequence(id)}
+        onEdit={() => setSheet("sequence")}
+      />
       <CommandInput ref={commandRef} repo={repo} onRun={(command) => void actions.runCommand(repo, command)} />
       <ProcessStrip
         runs={runs}
@@ -115,7 +126,7 @@ function OverviewPane({ actions }: { actions: ReturnType<typeof useRepositoryAct
   const version = useProcessVersion()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
-  const repoNames = useMemo(() => new Map(workspace.repositories.map((r) => [r.id, r.name])), [workspace.repositories])
+  const repoNames = useMemo(() => new Map(workspace.repositories.map((r) => [r.id, displayName(r)])), [workspace.repositories])
   const { runs, snapshots } = useMemo(() => {
     void version
     const runs = processStore.runsFor()

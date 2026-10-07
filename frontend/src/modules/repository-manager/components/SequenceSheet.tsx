@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowDown, ArrowUp, CircleSlash, FileCode2, Globe, Play, Plus, Save, Settings2, Square, Terminal, Trash2 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { AlertTriangle, ArrowDown, ArrowUp, CircleSlash, FileCode2, Globe, GripVertical, Play, Plus, Save, Settings2, Square, Terminal, Trash2 } from "lucide-react"
+import { useEffect, useMemo, useState, type DragEvent } from "react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -8,11 +8,15 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import type { CommandStep, Repository, SequenceRun } from "../domain"
+import { displayName, type CommandStep, type Repository, type SequenceRun } from "../domain"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
 import { useWorkspaceState } from "../hooks/useStores"
 import { GlobalCommandsDialog } from "./GlobalCommandsDialog"
+import { isNoopSlot, moveToSlot, slotFromPointer } from "../reorder"
 import { stepStatusVariant } from "./status"
+
+/** MIME type of an in-app step drag; other drags (files, text) are ignored. */
+const STEP_DRAG_TYPE = "application/x-repodock-step"
 
 function initialSteps(repo: Repository): CommandStep[] {
   return structuredClone(repo.commandSequence ?? [])
@@ -37,6 +41,9 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
   const [busy, setBusy] = useState(false)
   // Step whose command field should receive focus (a just-added command step).
   const [focusId, setFocusId] = useState<string | null>(null)
+  // Index of the step being dragged, and the insertion slot under the pointer.
+  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const [dropSlot, setDropSlot] = useState<number | null>(null)
 
   const saved = useMemo(() => JSON.stringify(repo.commandSequence ?? []), [repo.commandSequence])
   const dirty = JSON.stringify(steps) !== saved
@@ -61,6 +68,16 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
     ;[copy[index], copy[target]] = [copy[target], copy[index]]
     return copy
   })
+
+  const endDrag = () => { setDragFrom(null); setDropSlot(null) }
+  const overSlot = (event: DragEvent, slot: number) => {
+    if (dragFrom === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "move"
+    if (slot !== dropSlot) setDropSlot(slot)
+  }
+  const indicatorSlot = dragFrom !== null && dropSlot !== null && !isNoopSlot(dropSlot, dragFrom) ? dropSlot : null
 
   const requestClose = (next: boolean) => {
     if (!next && dirty) setConfirmClose(true)
@@ -92,7 +109,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
     <Sheet open={open} onOpenChange={requestClose}>
       <SheetContent closeLabel={t.common.close} className="max-w-2xl">
         <SheetHeader>
-          <SheetTitle>{t.sequence.title} · {repo.name}</SheetTitle>
+          <SheetTitle>{t.sequence.title} · {displayName(repo)}</SheetTitle>
           <SheetDescription>{t.sequence.hint}</SheetDescription>
           {sequence && (
             <div className="mt-2 flex items-center gap-2 text-xs">
@@ -103,7 +120,18 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
           )}
         </SheetHeader>
 
-        <ol className="thin-scrollbar flex-1 space-y-2 overflow-y-auto p-4">
+        <ol
+          className="thin-scrollbar flex-1 space-y-2 overflow-y-auto p-4"
+          // The empty area below the last step drops at the end.
+          onDragOver={(event) => overSlot(event, steps.length)}
+          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropSlot(null) }}
+          onDrop={(event) => {
+            if (dragFrom === null) return
+            event.preventDefault()
+            if (dropSlot !== null) setSteps((list) => moveToSlot(list, dragFrom, dropSlot))
+            endDrag()
+          }}
+        >
           {steps.length === 0 && (
             <li className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">{t.sequence.noSteps}</li>
           )}
@@ -117,14 +145,37 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
             return (
               <li
                 key={step.id}
-                className={cn("rounded-xl border p-3 transition", step.enabled ? "border-border bg-card" : "border-dashed border-border bg-transparent opacity-70")}
+                className={cn("relative rounded-xl border p-3 transition", step.enabled ? "border-border bg-card" : "border-dashed border-border bg-transparent opacity-70", dragFrom === index && "opacity-40")}
+                onDragOver={(event) => overSlot(event, slotFromPointer(index, event.clientY, event.currentTarget.getBoundingClientRect()))}
                 onKeyDown={(event) => {
                   if (!event.altKey) return
                   if (event.key === "ArrowUp") { event.preventDefault(); move(index, -1) }
                   if (event.key === "ArrowDown") { event.preventDefault(); move(index, 1) }
                 }}
               >
+                {(indicatorSlot === index || (indicatorSlot === index + 1 && index === steps.length - 1)) && (
+                  <span aria-hidden className={cn("pointer-events-none absolute inset-x-3 h-0.5 rounded-full bg-primary", indicatorSlot === index ? "-top-[5px]" : "-bottom-[5px]")} />
+                )}
                 <div className="flex items-center gap-2">
+                  <span
+                    draggable
+                    title={t.sequence.dragHandle}
+                    aria-hidden
+                    onDragStart={(event) => {
+                      const item = event.currentTarget.closest("li")
+                      if (item) {
+                        const rect = item.getBoundingClientRect()
+                        event.dataTransfer.setDragImage(item, event.clientX - rect.left, event.clientY - rect.top)
+                      }
+                      event.dataTransfer.effectAllowed = "move"
+                      event.dataTransfer.setData(STEP_DRAG_TYPE, step.id)
+                      setDragFrom(index)
+                    }}
+                    onDragEnd={endDrag}
+                    className="-ml-1 flex h-8 shrink-0 cursor-grab items-center rounded text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+                  >
+                    <GripVertical className="size-4" />
+                  </span>
                   <span className="w-5 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
                   <input
                     type="checkbox"
@@ -205,7 +256,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
                   </div>
                 </div>
 
-                <div className="mt-2 flex items-center gap-2 pl-[3.25rem]">
+                <div className="mt-2 flex items-center gap-2 pl-[4.5rem]">
                   <Input
                     value={step.label}
                     placeholder={step.script || global?.name || step.command || t.sequence.namePlaceholder}
@@ -221,7 +272,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
                   </Tooltip>
                 </div>
                 {(missing || globalMissing || noop || state?.error) && (
-                  <div className="mt-1.5 flex items-center gap-1.5 pl-[3.25rem] text-[11px]">
+                  <div className="mt-1.5 flex items-center gap-1.5 pl-[4.5rem] text-[11px]">
                     {missing ? <><AlertTriangle className="size-3 text-warning" /> <span className="text-muted-foreground">{t.sequence.scriptMissing}</span></>
                       : globalMissing ? <><AlertTriangle className="size-3 text-warning" /> <span className="text-muted-foreground">{t.sequence.globalMissing}</span></>
                       : noop ? <><CircleSlash className="size-3 text-warning" /> <span className="text-warning">{t.sequence.noCommand}</span></> : null}

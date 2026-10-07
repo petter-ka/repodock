@@ -3,7 +3,7 @@ import { errorMessage } from "@/lib/bridge"
 import { useI18n } from "@/lib/i18n"
 import { useNotifications } from "@/state/notifications"
 import { repositoryApi } from "../api"
-import type { CommandStep, GlobalCommand, GroupRunMode, ImportOptions, ImportPreview, Repository, Run } from "../domain"
+import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
 import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
 
@@ -50,7 +50,7 @@ export function useRepositoryActions() {
         const path = await guard(() => repositoryApi.browse())
         if (!path) return undefined
         const updated = await guard(() => repositoryApi.relocateRepository(repo.id, path))
-        if (updated) notify(f(t.relocate.done, { name: updated.name, path: updated.path }), { tone: "success" })
+        if (updated) notify(f(t.relocate.done, { name: displayName(updated), path: updated.path }), { tone: "success" })
         return updated
       },
       remove: (repo: Repository) => guard(() => repositoryApi.removeRepository(repo.id)),
@@ -58,7 +58,13 @@ export function useRepositoryActions() {
       renameGroup: (id: string, name: string) => guard(() => repositoryApi.renameGroup(id, name)),
       deleteGroup: (id: string) => guard(() => repositoryApi.deleteGroup(id)),
       setGroupCollapsed: (id: string, collapsed: boolean) => guard(() => repositoryApi.setGroupCollapsed(id, collapsed)),
+      /** Set a repository's alias; blank restores the discovered name. */
+      renameRepository: (repoId: string, alias: string) => guard(() => repositoryApi.renameRepository(repoId, alias)),
+      /** Place a group at `index` in the sidebar (index excludes the group itself). */
+      moveGroup: (groupId: string, index: number) => guard(() => repositoryApi.moveGroup(groupId, index)),
       assign: (repoId: string, groupId: string) => guard(() => repositoryApi.assignRepository(repoId, groupId)),
+      /** Place a repository at `index` in a group (index excludes the repository itself). */
+      move: (repoId: string, groupId: string, index: number) => guard(() => repositoryApi.moveRepository(repoId, groupId, index)),
       setGroupRunMode: (groupId: string, mode: GroupRunMode) => guard(() => repositoryApi.setGroupRunMode(groupId, mode)),
       async runGroup(groupId: string) {
         const run = await guard(() => repositoryApi.runGroup(groupId))
@@ -85,7 +91,7 @@ export function useRepositoryActions() {
         return result
       },
       runScript: async (repo: Repository, script: string) => trackRun(await guard(() => repositoryApi.runScript(repo.id, script))),
-      runCommand: async (repo: Repository, command: string) => trackRun(await guard(() => repositoryApi.runCommand(repo.id, command))),
+      runCommand: async (repo: Repository, command: string, label = "") => trackRun(await guard(() => repositoryApi.runCommand(repo.id, command, label))),
       stop: (runId: string) => guard(() => repositoryApi.stopProcess(runId)),
       /** Sends one line to a running process's stdin; true when delivered. */
       sendInput: async (runId: string, text: string, secret = false) =>

@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n"
 import { hasMod, modLabel } from "@/lib/keyboard"
 import { cn, formatTime } from "@/lib/utils"
 import { repositoryApi } from "../api"
-import type { EnvFile, Repository } from "../domain"
+import { displayName, type EnvFile, type Repository } from "../domain"
 import { maskEnv } from "../envMask"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
 
@@ -106,7 +106,7 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
         }}
       >
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2"><FileKey2 className="size-4" /> {t.env.title} · {repo.name}</SheetTitle>
+          <SheetTitle className="flex items-center gap-2"><FileKey2 className="size-4" /> {t.env.title} · {displayName(repo)}</SheetTitle>
           <SheetDescription>{t.env.hint}</SheetDescription>
         </SheetHeader>
 

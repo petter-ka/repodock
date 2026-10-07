@@ -9,7 +9,7 @@ Workspace
 │   ├── id
 │   ├── name                  # unique, case-insensitive
 │   └── command               # single-line shell text
-├── groups[]
+├── groups[]                  # sidebar order (MoveGroup)
 │   ├── id
 │   ├── name
 │   ├── repositoryIds[]      # display order within the group (also group-run order)
@@ -17,9 +17,10 @@ Workspace
 │   └── runMode              # sequential (default) | parallel — see ADR-0010
 └── repositories[]
     ├── id
-    ├── name                  # package.json "name", else folder name
-    ├── path                  # absolute; natural dedup key (case-insensitive on Windows)
-    ├── packageManager        # npm | pnpm | yarn | bun
+    ├── name                  # package.json "name", else folder name (refreshed)
+    ├── alias                 # user display name; "" = none — see ADR-0015
+    ├── path                  # absolute; NOT unique — several records may share a folder
+    ├── packageManager        # npm | pnpm | yarn | bun; "" = plain folder (no package.json)
     ├── scripts[]             # { name, command } in package.json declaration order
     ├── commandSequence[]     # null = never configured
     │   ├── id, label
@@ -61,7 +62,7 @@ A separate, shareable format written by "Export" and read by "Import" (ADR-0011)
 ```text
 ExportDocument
 ├── format              # always "repodock.workspace-export"
-├── version             # 2 (version 1 files, without globalCommands, are still read)
+├── version             # 3 (adds repository alias and plainFolder); versions 1–2 are still read
 ├── exportedAt
 ├── globalCommands[]    # optional; { id, name, command } — id is document-local
 └── groups[]
@@ -70,13 +71,17 @@ ExportDocument
     ├── collapsed
     └── repositories[]
         ├── name
-        ├── path        # forward slashes; "~/" = home folder; matched on import
+        ├── alias       # optional (version 3+)
+        ├── plainFolder # optional (version 3+): registered without package.json
+        ├── path        # forward slashes; "~/" = home folder; already registered folders are skipped on import
         └── commandSequence[]   # same shape as the workspace; null = never configured;
                                 # step globalCommand references globalCommands[].id
 ```
 
 Excluded on purpose: internal IDs, scripts, package manager, env file names and contents, refresh timestamps, problems.
 
+Represented: group order, name, run mode and collapsed state; repository order within each group; several records of one folder (each entry separately, with its alias); nested and plain folders; every sequence step with its kind, label, enabled and background flags, and the global commands it references. On import, new groups keep the file's order relative to groups that already exist (each follows its predecessor in the file); existing groups and repositories are never modified, and folders registered before the import are skipped.
+
 ## Runtime-only state (not persisted)
 
-Runs, process snapshots, output, sequence runs and group runs (latest per group) live in memory. The backend retains up to 200 finished runs; the frontend keeps at most 5,000 lines per run and 10,000 per repository/global view.
+Runs, process snapshots, output, sequence runs and group runs (latest per group) live in memory. The backend retains up to 200 finished runs; the frontend keeps the newest 200 finished runs and a fixed-size ring buffer of console lines globally and per repository, sized by the Console scrollback setting (1k/2k/5k/10k/20k, default 2k) — see ADR-0016.

@@ -35,8 +35,13 @@ type Script struct {
 }
 
 type Repository struct {
-	ID              string        `json:"id"`
-	Name            string        `json:"name"`
+	ID string `json:"id"`
+	// Name comes from package.json (or the folder name for plain folders)
+	// and is refreshed on every inspection.
+	Name string `json:"name"`
+	// Alias is a user-chosen display name that overrides Name; empty means
+	// none. It tells apart several records of the same folder (ADR-0015).
+	Alias           string        `json:"alias"`
 	Path            string        `json:"path"`
 	PackageManager  string        `json:"packageManager"`
 	Scripts         []Script      `json:"scripts"`
@@ -47,6 +52,14 @@ type Repository struct {
 	// Problem describes why the last refresh could not read package.json.
 	// Empty when the repository metadata is healthy.
 	Problem string `json:"problem"`
+}
+
+// DisplayName is the alias when set, otherwise the discovered name.
+func (r Repository) DisplayName() string {
+	if r.Alias != "" {
+		return r.Alias
+	}
+	return r.Name
 }
 
 type Workspace struct {
@@ -281,7 +294,8 @@ type ImportPreview struct {
 }
 
 type ImportOptions struct {
-	// KeepStepsEnabled preserves each step's enabled flag; by default all
+	// KeepStepsEnabled preserves each step's enabled flag (the import
+	// dialog sends true unless the user opts out); when false, all
 	// imported steps are disabled until the user reviews them.
 	KeepStepsEnabled bool `json:"keepStepsEnabled"`
 	// PathOverrides maps a repository path shown in the preview to the
@@ -294,12 +308,14 @@ type FolderCheck struct {
 	// Path is the absolute, cleaned folder path.
 	Path   string `json:"path"`
 	Exists bool   `json:"exists"`
-	// Valid is true when the folder contains a readable package.json.
+	// Valid is true when the folder can be registered: it has a readable
+	// package.json, or none at all (a plain folder).
 	Valid bool   `json:"valid"`
 	Name  string `json:"name"`
 	// Problem explains why the folder is not valid.
 	Problem string `json:"problem"`
 	// RegisteredID is set when another repository already uses this path.
+	// Informational: several records may share a folder (ADR-0015).
 	RegisteredID   string `json:"registeredId"`
 	RegisteredName string `json:"registeredName"`
 }

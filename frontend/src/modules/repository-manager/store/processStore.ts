@@ -1,38 +1,66 @@
 // Client-side mirror of backend process state. It lives outside React so a
 // chatty process does not re-render the tree per line: mutations are cheap
 // and subscribers are notified at most once per animation frame.
+//
+// Memory stays constant for long-running processes: output lives in
+// fixed-size ring buffers (one for everything, one per repository, sized by
+// the console scrollback setting), line objects are shared between them, a
+// run's view is derived from its repository's buffer, and only the newest
+// finished runs are remembered (mirroring the backend's retention).
 import { isActive } from "@/lib/contracts"
+import { RingBuffer } from "@/lib/ringBuffer"
+import { consoleLimit } from "@/state/consoleLimit"
 import type { ConsoleLine, GroupRun, ProcessExit, ProcessOutput, ProcessSnapshot, Run, SequenceRun } from "../domain"
 
-export const RUN_LINE_LIMIT = 5_000
-export const VIEW_LINE_LIMIT = 10_000
+/** Finished runs kept for the process strip and run filter (backend keeps 200 too). */
+export const RETAIN_FINISHED_RUNS = 200
 
 type Schedule = (callback: () => void) => void
 
 const defaultSchedule: Schedule = (callback) =>
   typeof requestAnimationFrame === "function" ? void requestAnimationFrame(callback) : void setTimeout(callback, 16)
 
-function push(list: ConsoleLine[], line: ConsoleLine, limit: number) {
-  list.push(line)
-  // Trim in chunks so the amortized cost stays O(1) per line.
-  if (list.length > limit + Math.ceil(limit / 10)) list.splice(0, list.length - limit)
+/** Read-only, index-addressable console lines; no copy is made for whole buffers. */
+export type LineView = {
+  readonly length: number
+  at(index: number): ConsoleLine | undefined
+  /** lines dropped from the front so far, when the view is a live buffer */
+  readonly evicted?: number
 }
+
+const EMPTY: LineView = { length: 0, at: () => undefined, evicted: 0 }
 
 export class ProcessStore {
   private runs = new Map<string, Run>()
   private snapshots = new Map<string, ProcessSnapshot>()
   private sequences = new Map<string, SequenceRun>()
   private groupRuns = new Map<string, GroupRun>()
-  private all: ConsoleLine[] = []
-  private byRepo = new Map<string, ConsoleLine[]>()
-  private byRun = new Map<string, ConsoleLine[]>()
+  private all: RingBuffer<ConsoleLine>
+  private byRepo = new Map<string, RingBuffer<ConsoleLine>>()
+  /** one cached run view, rebuilt when output changes */
+  private runView: { runId: string; stamp: number; lines: ConsoleLine[] } | null = null
+  private outputStamp = 0
   /** runId → prompt text while the run's latest output is an unanswered prompt */
   private prompts = new Map<string, string>()
   private listeners = new Set<() => void>()
   private version = 0
   private pending = false
 
-  constructor(private schedule: Schedule = defaultSchedule) {}
+  constructor(private schedule: Schedule = defaultSchedule, private limit: number = consoleLimit.get()) {
+    this.all = new RingBuffer(limit)
+  }
+
+  /** Scrollback per view (all repositories, and each repository). */
+  getLimit = () => this.limit
+
+  setLimit(limit: number) {
+    if (limit === this.limit) return
+    this.limit = limit
+    this.all.resize(limit)
+    this.byRepo.forEach((buffer) => buffer.resize(limit))
+    this.outputStamp++
+    this.changed()
+  }
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
@@ -58,6 +86,7 @@ export class ProcessStore {
     })
     sequences.forEach((sequence) => this.mergeSequence(sequence))
     groupRuns.forEach((run) => this.mergeGroupRun(run))
+    this.pruneFinished()
     this.changed()
   }
 
@@ -93,6 +122,7 @@ export class ProcessStore {
 
   upsertRun(run: Run) {
     this.mergeRun(run)
+    this.pruneFinished()
     this.changed()
   }
 
@@ -102,7 +132,20 @@ export class ProcessStore {
     this.runs.set(exit.runId, { ...run, status: exit.status, exitCode: exit.exitCode, endedAt: exit.endedAt })
     this.snapshots.delete(exit.runId)
     this.prompts.delete(exit.runId)
+    this.pruneFinished()
     this.changed()
+  }
+
+  /** Forgets the oldest finished runs beyond the retention limit. Their lines stay until they scroll out. */
+  private pruneFinished() {
+    const finished = [...this.runs.values()].filter((run) => !isActive(run.status))
+    if (finished.length <= RETAIN_FINISHED_RUNS) return
+    finished.sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    for (const run of finished.slice(0, finished.length - RETAIN_FINISHED_RUNS)) {
+      this.runs.delete(run.id)
+      this.snapshots.delete(run.id)
+      this.prompts.delete(run.id)
+    }
   }
 
   applyStats(snapshot: ProcessSnapshot) {
@@ -114,18 +157,17 @@ export class ProcessStore {
 
   applyOutput(lines: ProcessOutput[]) {
     for (const line of lines) {
-      const entry: ConsoleLine = line
-      push(this.all, entry, VIEW_LINE_LIMIT)
+      this.all.push(line)
       let repo = this.byRepo.get(line.repositoryId)
-      if (!repo) this.byRepo.set(line.repositoryId, (repo = []))
-      push(repo, entry, VIEW_LINE_LIMIT)
-      let run = this.byRun.get(line.runId)
-      if (!run) this.byRun.set(line.runId, (run = []))
-      push(run, entry, RUN_LINE_LIMIT)
+      if (!repo) this.byRepo.set(line.repositoryId, (repo = new RingBuffer(this.limit)))
+      repo.push(line)
       if (line.partial && line.stream !== "stdin") this.prompts.set(line.runId, line.text)
       else this.prompts.delete(line.runId)
     }
-    if (lines.length) this.changed()
+    if (lines.length) {
+      this.outputStamp++
+      this.changed()
+    }
   }
 
   applySequence(sequence: SequenceRun) {
@@ -136,14 +178,13 @@ export class ProcessStore {
   /** Clears console output, for one repository or everything. */
   clearOutput(repositoryId?: string) {
     if (!repositoryId) {
-      this.all = []
+      this.all.clear()
       this.byRepo.clear()
-      this.byRun.clear()
     } else {
-      this.all = this.all.filter((line) => line.repositoryId !== repositoryId)
+      this.all.retain((line) => line.repositoryId !== repositoryId)
       this.byRepo.delete(repositoryId)
-      for (const run of this.runs.values()) if (run.repositoryId === repositoryId) this.byRun.delete(run.id)
     }
+    this.outputStamp++
     this.changed()
   }
 
@@ -165,13 +206,13 @@ export class ProcessStore {
     if (!ids.size) return
     ids.forEach((id) => {
       this.runs.delete(id)
-      this.byRun.delete(id)
       this.snapshots.delete(id)
       this.prompts.delete(id)
     })
     const keep = (line: ConsoleLine) => !ids.has(line.runId)
-    this.all = this.all.filter(keep)
-    for (const [repo, lines] of this.byRepo) this.byRepo.set(repo, lines.filter(keep))
+    this.all.retain(keep)
+    this.byRepo.forEach((buffer) => buffer.retain(keep))
+    this.outputStamp++
     this.changed()
   }
 
@@ -207,12 +248,28 @@ export class ProcessStore {
     return this.sequences.get(repositoryId)
   }
 
-  /** Console lines for a scope. The returned array must not be mutated. */
-  lines(scope: { repositoryId?: string; runId?: string | null }): readonly ConsoleLine[] {
-    if (scope.runId) return this.byRun.get(scope.runId) ?? []
-    if (scope.repositoryId) return this.byRepo.get(scope.repositoryId) ?? []
+  /**
+   * Console lines for a scope, oldest first. Repository and global scopes
+   * are the live buffers (no copy); a run's lines are filtered from its
+   * repository's buffer and cached until output changes.
+   */
+  lines(scope: { repositoryId?: string; runId?: string | null }): LineView {
+    if (scope.runId) {
+      const cached = this.runView
+      if (cached?.runId === scope.runId && cached.stamp === this.outputStamp) return cached.lines
+      const repoId = this.runs.get(scope.runId)?.repositoryId ?? scope.repositoryId
+      const source = (repoId && this.byRepo.get(repoId)) || this.all
+      const lines = source.filter((line) => line.runId === scope.runId)
+      this.runView = { runId: scope.runId, stamp: this.outputStamp, lines }
+      return lines
+    }
+    if (scope.repositoryId) return this.byRepo.get(scope.repositoryId) ?? EMPTY
     return this.all
   }
+
+  /** Changes whenever any console output is added or removed. */
+  getOutputStamp = () => this.outputStamp
 }
 
 export const processStore = new ProcessStore()
+consoleLimit.subscribe((limit) => processStore.setLimit(limit))

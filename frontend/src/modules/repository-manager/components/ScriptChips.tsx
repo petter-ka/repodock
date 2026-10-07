@@ -1,23 +1,46 @@
-import { Loader2, Play } from "lucide-react"
+import { ChevronDown, ChevronRight, Loader2, Play } from "lucide-react"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
+import { readPreference, writePreference } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 import type { Repository } from "../domain"
 
-/** One chip per package.json script, in declaration order. Click runs it. */
+const EXPANDED_KEY = "scripts.expanded"
+
+/**
+ * One chip per package.json script, in declaration order. Click runs it.
+ * Collapsed by default; the open/closed choice is remembered per device.
+ */
 export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; runningLabels: Set<string>; onRun: (script: string) => void }) {
   const { t, f } = useI18n()
+  const [expanded, setExpanded] = useState(() => readPreference(EXPANDED_KEY) === "true")
+  const runningCount = repo.scripts.filter((script) => runningLabels.has(script.name)).length
+  const toggle = () => setExpanded((open) => {
+    writePreference(EXPANDED_KEY, String(!open))
+    return !open
+  })
+
   return (
     <section aria-label={t.scripts.title} className="px-6 pt-4">
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.scripts.title}</h2>
+      <button
+        aria-expanded={expanded}
+        aria-controls="script-chips"
+        onClick={toggle}
+        className={cn("-ml-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring", expanded && "mb-2")}
+      >
+        {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em]">{t.scripts.title}</h2>
         <Badge className="tabular-nums">{repo.scripts.length}</Badge>
-      </div>
-      {repo.scripts.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{repo.problem ? t.scripts.unknown : t.scripts.empty}</p>
+        {!expanded && runningCount > 0 && (
+          <Badge variant="success" className="gap-1 tabular-nums"><Loader2 className="size-3 animate-spin" />{f(t.scripts.runningCount, { count: runningCount })}</Badge>
+        )}
+      </button>
+      {expanded && (repo.scripts.length === 0 ? (
+        <p id="script-chips" className="text-xs text-muted-foreground">{repo.problem ? t.scripts.unknown : repo.packageManager ? t.scripts.empty : t.scripts.plainFolder}</p>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
+        <div id="script-chips" className="flex flex-wrap gap-1.5">
           {repo.scripts.map((script) => {
             const running = runningLabels.has(script.name)
             return (
@@ -42,7 +65,7 @@ export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; 
             )
           })}
         </div>
-      )}
+      ))}
     </section>
   )
 }

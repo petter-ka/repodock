@@ -6,6 +6,7 @@ import { locales, useI18n, type Locale } from "@/lib/i18n"
 import { modLabel } from "@/lib/keyboard"
 import { useTheme, type ThemeMode } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import { CONSOLE_LIMITS, consoleLimit, useConsoleLimit, type ConsoleLimit } from "@/state/consoleLimit"
 
 const themeIcons: Record<ThemeMode, React.ReactNode> = {
   system: <Monitor className="size-4" />,
@@ -52,7 +53,8 @@ function Card({ title, hint, children }: { title: string; hint?: string; childre
 
 export function SettingsView() {
   const { mode, setMode } = useTheme()
-  const { locale, setLocale, t } = useI18n()
+  const { locale, setLocale, t, f } = useI18n()
+  const limit = useConsoleLimit()
   const [workspacePath, setWorkspacePath] = useState("")
   const backend = getBackend()
 
@@ -94,6 +96,14 @@ export function SettingsView() {
               value={locale}
               onChange={setLocale}
               options={(Object.keys(locales) as Locale[]).map((value) => ({ value, label: locales[value].label }))}
+            />
+          </Card>
+          <Card title={t.settings.console} hint={f(t.settings.consoleHint, { default: "2k" })}>
+            <Segmented
+              label={t.settings.console}
+              value={String(limit)}
+              onChange={(value) => consoleLimit.set(Number(value) as ConsoleLimit)}
+              options={CONSOLE_LIMITS.map((value) => ({ value: String(value), label: f(t.settings.consoleRows, { count: `${value / 1000}k` }) }))}
             />
           </Card>
           <Card title={t.settings.shortcuts}>

@@ -59,7 +59,7 @@ func (r *Runner) StartGroup(group domain.Group, repos []domain.Repository) (doma
 		if !hasEnabledSteps(repo) {
 			status = domain.StepSkipped
 		}
-		gs.run.Repos = append(gs.run.Repos, domain.GroupRepoState{RepositoryID: repo.ID, Name: repo.Name, Status: status})
+		gs.run.Repos = append(gs.run.Repos, domain.GroupRepoState{RepositoryID: repo.ID, Name: repo.DisplayName(), Status: status})
 	}
 	r.groups[group.ID] = gs
 	snapshot := cloneGroup(gs.run)

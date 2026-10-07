@@ -5,6 +5,7 @@ import type { Backend } from "./bridge"
 import type {
   AppBinding, CommandStep, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
 } from "./contracts"
+import { displayName } from "./contracts"
 
 const ZERO = "0001-01-01T00:00:00Z"
 const now = () => new Date().toISOString()
@@ -12,7 +13,7 @@ const uid = () => crypto.randomUUID()
 
 function seedWorkspace(): Workspace {
   const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[]): Repository => ({
-    id, name, path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
+    id, name, alias: "", path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
     scripts: scripts.map(([n, command]) => ({ name: n, command })),
     commandSequence: scripts.map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, globalCommand: "", command: "", enabled: n === "dev", background: n === "dev" })),
   })
@@ -63,7 +64,7 @@ export function createMockBackend(): Backend {
     version: number
     exportedAt: string
     globalCommands?: GlobalCommand[]
-    groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; path: string; commandSequence: CommandStep[] | null }> }>
+    groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; alias?: string; plainFolder?: boolean; path: string; commandSequence: CommandStep[] | null }> }>
   }
   const parseExport = (path: string): ExportDoc => {
     const text = importFiles.get(path)
@@ -71,7 +72,7 @@ export function createMockBackend(): Backend {
     let doc: ExportDoc
     try { doc = JSON.parse(text) } catch (error) { throw `not a valid RepoDock export: ${error}` }
     if (doc.format !== "repodock.workspace-export") throw `not a RepoDock export (format "${doc.format}")`
-    if (doc.version !== 1 && doc.version !== 2) throw `export version ${doc.version} is not supported`
+    if (![1, 2, 3].includes(doc.version)) throw `export version ${doc.version} is not supported`
     return doc
   }
   // Simulated filesystem: folders under C:/work/ exist unless the path says "missing".
@@ -234,12 +235,16 @@ export function createMockBackend(): Backend {
     async Workspace() { return snapshot() },
     async BrowseRepository() { return window.prompt("Mock folder path", "C:/work/new-service") ?? "" },
     async AddRepository(path, groupID) {
-      const existing = workspace.repositories.find((r) => r.path.toLowerCase() === path.toLowerCase())
-      if (existing) return structuredClone(existing)
       const name = path.split(/[\\/]/).filter(Boolean).pop() || "repository"
       const group = workspace.groups.find((g) => g.id === groupID) ?? workspace.groups[0]
+      // Mirrors App.duplicateAlias: extra records of one folder get "name (n)".
+      let alias = ""
+      if (findRepoByPath(path)) {
+        const taken = new Set(workspace.repositories.map((r) => displayName(r).toLowerCase()))
+        for (let n = 2; !alias; n++) if (!taken.has(`${name} (${n})`.toLowerCase())) alias = `${name} (${n})`
+      }
       const repo: Repository = {
-        id: uid(), name, path, packageManager: "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(), problem: "",
+        id: uid(), name, alias, path, packageManager: "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(), problem: "",
         scripts: [{ name: "dev", command: "node server.js" }, { name: "test", command: "node --test" }],
         commandSequence: [{ id: uid(), label: "dev", script: "dev", globalCommand: "", command: "", enabled: false, background: true }],
       }
@@ -254,14 +259,12 @@ export function createMockBackend(): Backend {
       const registered = findRepoByPath(path)
       return {
         path, exists, valid: exists, name: path.split(/[\\/]/).filter(Boolean).pop() ?? "",
-        problem: exists ? "" : `folder not found: ${path}`, registeredId: registered?.id ?? "", registeredName: registered?.name ?? "",
+        problem: exists ? "" : `folder not found: ${path}`, registeredId: registered?.id ?? "", registeredName: registered ? displayName(registered) : "",
       }
     },
     async RelocateRepository(id, path) {
       const repo = findRepo(id)
       if (!folderExists(path)) throw `cannot use ${path}: folder not found`
-      const other = findRepoByPath(path)
-      if (other && other.id !== id) throw `${path} is already registered as "${other.name}"`
       Object.assign(repo, { path, problem: "", lastRefreshedAt: now() })
       changed()
       return structuredClone(repo)
@@ -301,10 +304,10 @@ export function createMockBackend(): Backend {
       const used = new Set(groups.flatMap((g) => g.repositoryIds.map(findRepo).flatMap((r) => (r.commandSequence ?? []).map((s) => s.globalCommand))))
       const globals = workspace.globalCommands.filter((g) => !groupIDs.length || used.has(g.id))
       const doc: ExportDoc = {
-        format: "repodock.workspace-export", version: 2, exportedAt: now(), ...(globals.length ? { globalCommands: globals } : {}),
+        format: "repodock.workspace-export", version: 3, exportedAt: now(), ...(globals.length ? { globalCommands: globals } : {}),
         groups: groups.map((g) => ({
           name: g.name, runMode: g.runMode, collapsed: g.collapsed,
-          repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, path: r.path, commandSequence: r.commandSequence })),
+          repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, ...(r.alias ? { alias: r.alias } : {}), ...(r.packageManager ? {} : { plainFolder: true }), path: r.path, commandSequence: r.commandSequence })),
         })),
       }
       const name = groupIDs.length === 1 ? `repodock-${groups[0]?.name ?? "group"}.json` : "repodock-workspace.json"
@@ -338,22 +341,20 @@ export function createMockBackend(): Backend {
         preview.globalCommands!.push({ id: plan.doc.id, name: plan.doc.name, command: plan.doc.command, status: plan.status, importName: plan.name })
         if (plan.status !== "existing") preview.shellCommands++
       }
-      const seen = new Set<string>()
       for (const group of doc.groups) {
         const exists = !!findGroupByName(group.name)
         if (!exists) preview.groupsToCreate++
         preview.groups.push({
           name: group.name, exists,
           repositories: group.repositories.map((repo) => {
-            const status = seen.has(repo.path.toLowerCase()) ? "duplicate" : findRepoByPath(repo.path) ? "existing" : folderExists(repo.path) ? "new" : "missing"
-            seen.add(repo.path.toLowerCase())
+            const status = findRepoByPath(repo.path) ? "existing" : folderExists(repo.path) ? "new" : "missing"
             if (status === "existing") preview.existing++
             if (status === "missing") preview.missing++
             if (status === "new" || status === "missing") {
               preview.new++
               preview.shellCommands += (repo.commandSequence ?? []).filter((s) => !s.script && !s.globalCommand && s.command).length
             }
-            return { name: repo.name, path: repo.path, status, steps: repo.commandSequence }
+            return { name: repo.alias || repo.name, path: repo.path, status, steps: repo.commandSequence }
           }),
         })
       }
@@ -370,19 +371,31 @@ export function createMockBackend(): Backend {
         globalIds.set(plan.doc.id, local.id)
         result.globalCommandsAdded++
       }
-      for (const entry of doc.groups) {
+      // Only folders registered before the import are skipped; a folder
+      // repeated inside the file is imported once per entry.
+      const before = new Set(workspace.repositories.map((r) => r.path.toLowerCase()))
+      // Mirrors transfer.Merge: a new group follows its predecessor in the
+      // file, or, before any, goes ahead of the first file group present.
+      let anchor = -1
+      const position = (name: string) => workspace.groups.findIndex((g) => g.name.trim().toLowerCase() === name.trim().toLowerCase())
+      for (const [index, entry] of doc.groups.entries()) {
         let group = findGroupByName(entry.name)
+        if (group) anchor = position(entry.name) + 1
         if (!group) {
           group = { id: uid(), name: entry.name.trim(), repositoryIds: [], collapsed: entry.collapsed, runMode: entry.runMode ?? "sequential" }
-          workspace.groups.push(group)
+          if (anchor < 0) {
+            const later = doc.groups.slice(index + 1).map((g) => position(g.name)).find((at) => at >= 0)
+            anchor = later ?? workspace.groups.length
+          }
+          workspace.groups.splice(anchor++, 0, group)
           result.groupsCreated++
         }
         for (const entryRepo of entry.repositories) {
           const override = options.pathOverrides?.[entryRepo.path]?.trim()
           const repo = override ? { ...entryRepo, path: override } : entryRepo
-          if (findRepoByPath(repo.path)) { result.repositoriesSkipped++; continue }
+          if (before.has(repo.path.toLowerCase())) { result.repositoriesSkipped++; continue }
           const record: Repository = {
-            id: uid(), name: repo.name, path: repo.path, packageManager: "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
+            id: uid(), name: repo.name, alias: repo.alias?.trim() ?? "", path: repo.path, packageManager: repo.plainFolder ? "" : "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
             problem: folderExists(repo.path) ? "" : `folder not found: ${repo.path}`, scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),
             commandSequence: repo.commandSequence?.map((s) => ({
               ...s, id: uid(), enabled: options.keepStepsEnabled && s.enabled,
@@ -412,7 +425,7 @@ export function createMockBackend(): Backend {
       if (!repos.some(enabled)) throw "no repository in this group has enabled sequence steps"
       const run: GroupRun & { cancelled?: boolean } = {
         id: uid(), groupId: groupID, mode: group.runMode, status: "running", startedAt: now(), endedAt: ZERO,
-        repos: repos.map((repo) => ({ repositoryId: repo.id, name: repo.name, sequenceId: "", status: enabled(repo) ? "pending" : "skipped", error: "" })),
+        repos: repos.map((repo) => ({ repositoryId: repo.id, name: displayName(repo), sequenceId: "", status: enabled(repo) ? "pending" : "skipped", error: "" })),
       }
       groupRuns.set(groupID, run)
       const update = () => { const { cancelled: _c, ...plainRun } = run; emit("group:updated", structuredClone(plainRun)) }
@@ -456,10 +469,29 @@ export function createMockBackend(): Backend {
       if (group) group.collapsed = collapsed
       changed()
     },
+    async RenameRepository(id, alias) {
+      const trimmed = alias.trim()
+      if (trimmed.length > 200) throw "alias is longer than 200 characters"
+      findRepo(id).alias = trimmed
+      changed()
+    },
+    async MoveGroup(id, index) {
+      const from = workspace.groups.findIndex((g) => g.id === id)
+      if (from < 0) throw `group ${id}: not found`
+      const [group] = workspace.groups.splice(from, 1)
+      workspace.groups.splice(index < 0 || index > workspace.groups.length ? workspace.groups.length : index, 0, group)
+      changed()
+    },
     async AssignRepository(id, groupID) {
+      await api.MoveRepository(id, groupID, -1)
+    },
+    async MoveRepository(id, groupID, index) {
       const repo = findRepo(id)
+      const target = workspace.groups.find((g) => g.id === groupID)
+      if (!target) throw `group ${groupID}: not found`
       workspace.groups.forEach((g) => { g.repositoryIds = g.repositoryIds.filter((r) => r !== id) })
-      workspace.groups.find((g) => g.id === groupID)?.repositoryIds.push(id)
+      const at = index < 0 || index > target.repositoryIds.length ? target.repositoryIds.length : index
+      target.repositoryIds.splice(at, 0, id)
       repo.groupId = groupID
       changed()
     },

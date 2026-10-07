@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +45,7 @@ func newTestApp(t *testing.T) *App {
 	return a
 }
 
-func TestAddRepositoryDiscoversAndDeduplicates(t *testing.T) {
+func TestAddRepositoryDiscoversAndAllowsDuplicates(t *testing.T) {
 	a := newTestApp(t)
 	dir := fixture(t)
 
@@ -58,16 +60,45 @@ func TestAddRepositoryDiscoversAndDeduplicates(t *testing.T) {
 		t.Fatalf("repo = %#v", repo)
 	}
 
+	// The same folder may be registered again; extra records get a
+	// numbered alias so they can be told apart.
 	again, err := a.AddRepository(filepath.Join(dir, "."), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.ID != repo.ID || len(a.Workspace().Repositories) != 1 {
-		t.Fatal("duplicate path must resolve to the existing record")
+	if again.ID == repo.ID || again.Path != repo.Path || again.Alias != "fixture (2)" || repo.Alias != "" {
+		t.Fatalf("duplicate = %+v", again)
+	}
+	third, _ := a.AddRepository(dir, "")
+	if third.Alias != "fixture (3)" || len(a.Workspace().Repositories) != 3 {
+		t.Fatalf("third = %+v", third)
+	}
+	if err := a.RenameRepository(third.ID, "  staging  "); err != nil {
+		t.Fatal(err)
+	}
+	if renamed, _ := a.workspace.Repository(third.ID); renamed.Alias != "staging" || renamed.DisplayName() != "staging" || renamed.Name != "fixture" {
+		t.Fatalf("renamed = %+v", renamed)
+	}
+	if err := a.RenameRepository(third.ID, "a\nb"); err == nil {
+		t.Fatal("multi-line aliases must be rejected")
 	}
 
-	if _, err := a.AddRepository(t.TempDir(), ""); err == nil {
-		t.Fatal("folders without package.json must be rejected")
+	// A folder without package.json is a plain folder: no scripts, no
+	// problem, and it stays healthy on refresh.
+	plainDir := t.TempDir()
+	plain, err := a.AddRepository(plainDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Name != filepath.Base(plainDir) || plain.PackageManager != "" || len(plain.Scripts) != 0 || plain.Problem != "" || plain.Alias != "" {
+		t.Fatalf("plain = %+v", plain)
+	}
+	if refreshed, _ := a.RefreshRepository(plain.ID); refreshed.Problem != "" {
+		t.Fatalf("plain folder refresh problem = %q", refreshed.Problem)
+	}
+	// A parent folder of a registered repository is just another folder.
+	if _, err := a.AddRepository(filepath.Dir(dir), ""); err != nil {
+		t.Fatalf("parent folder: %v", err)
 	}
 
 	// A broken package.json keeps the record and reports the problem.
@@ -94,7 +125,7 @@ func TestAddRepositoryDiscoversAndDeduplicates(t *testing.T) {
 	if err := a.RemoveRepository(repo.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(a.Workspace().Repositories) != 0 {
+	if _, ok := a.workspace.Repository(repo.ID); ok || len(a.Workspace().Repositories) != 4 {
 		t.Fatal("repository not removed")
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".env")); err != nil {
@@ -324,18 +355,18 @@ func TestRelocateRepository(t *testing.T) {
 	if check := a.CheckRepositoryFolder(moved); !check.Valid || !check.Exists || check.Name != "fixture" || check.RegisteredID != "" {
 		t.Fatalf("check = %+v", check)
 	}
-	if check := a.CheckRepositoryFolder(t.TempDir()); check.Valid || !check.Exists || !strings.Contains(check.Problem, "package.json") {
-		t.Fatalf("empty folder check = %+v", check)
+	if check := a.CheckRepositoryFolder(t.TempDir()); !check.Valid || !check.Exists || check.Problem != "" {
+		t.Fatalf("plain folder check = %+v", check)
+	}
+	if check := a.CheckRepositoryFolder(other.Path); !check.Valid || check.RegisteredID != other.ID {
+		t.Fatalf("registered folder check = %+v", check)
 	}
 	if check := a.CheckRepositoryFolder(filepath.Join(moved, "nope")); check.Exists || check.Valid {
 		t.Fatalf("missing folder check = %+v", check)
 	}
 
-	if _, err := a.RelocateRepository(repo.ID, other.Path); err == nil || !strings.Contains(err.Error(), "already registered") {
-		t.Fatalf("relocating onto another repository must fail, got %v", err)
-	}
-	if _, err := a.RelocateRepository(repo.ID, t.TempDir()); err == nil {
-		t.Fatal("a folder without package.json must be rejected")
+	if _, err := a.RelocateRepository(repo.ID, filepath.Join(moved, "nope")); err == nil {
+		t.Fatal("a missing folder must be rejected")
 	}
 
 	relocated, err := a.RelocateRepository(repo.ID, moved)
@@ -364,8 +395,8 @@ func TestImportWithPathOverride(t *testing.T) {
 	}
 	missingPath := preview.Groups[0].Repositories[0].Path
 
-	if _, err := a.ApplyImport(file, domain.ImportOptions{PathOverrides: map[string]string{missingPath: t.TempDir()}}); err == nil {
-		t.Fatal("an override without package.json must be rejected")
+	if _, err := a.ApplyImport(file, domain.ImportOptions{PathOverrides: map[string]string{missingPath: filepath.Join(t.TempDir(), "nope")}}); err == nil {
+		t.Fatal("an override to a missing folder must be rejected")
 	}
 	if len(a.Workspace().Repositories) != 0 {
 		t.Fatal("a rejected import must not change the workspace")
@@ -425,5 +456,94 @@ func TestGlobalCommandSteps(t *testing.T) {
 	done, _ = a.sequence.Wait(seq.ID)
 	if done.Steps[0].Status != domain.StepFailed || !strings.Contains(done.Steps[0].Error, "no longer exists") {
 		t.Fatalf("steps = %+v", done.Steps)
+	}
+}
+
+// TestExportImportPreservesEverything builds a workspace using every
+// organizing feature — group order, member order, duplicate folders,
+// aliases, plain and nested folders, all step kinds — exports it and imports
+// it into an empty workspace, which must end up equivalent.
+func TestExportImportPreservesEverything(t *testing.T) {
+	source := newTestApp(t)
+	dir := fixture(t)
+	nested := filepath.Join(dir, "packages", "web")
+	if err := os.MkdirAll(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(nested, "package.json"), []byte(`{"name":"web","scripts":{"dev":"vite"}}`), 0o600)
+	plainDir := t.TempDir()
+
+	globals, err := source.SaveGlobalCommands([]domain.GlobalCommand{{Name: "Clean", Command: "npx rimraf dist"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := source.Workspace().Groups[0]
+	apps, _ := source.CreateGroup("Apps")
+	infra, _ := source.CreateGroup("Infra")
+	_ = source.SetGroupRunMode(infra.ID, "parallel")
+	_ = source.SetGroupCollapsed(apps.ID, true)
+
+	main, _ := source.AddRepository(dir, apps.ID)
+	copy2, _ := source.AddRepository(dir, apps.ID) // same folder again → "fixture (2)"
+	child, _ := source.AddRepository(nested, apps.ID)
+	plain, _ := source.AddRepository(plainDir, infra.ID)
+	parent, _ := source.AddRepository(filepath.Dir(dir), infra.ID) // plain parent folder
+	_ = source.RenameRepository(main.ID, "Fixture (prod)")
+	_ = source.MoveRepository(child.ID, apps.ID, 0) // apps: child, main, copy2
+	_ = source.MoveGroup(infra.ID, 0)               // groups: Infra, first, Apps
+	_ = source.SaveCommandSequence(copy2.ID, []domain.CommandStep{
+		{ID: "a", Script: "build", Enabled: true},
+		{ID: "b", GlobalCommand: globals[0].ID, Enabled: true},
+		{ID: "c", Command: "echo hi", Label: "Say hi", Enabled: false, Background: true},
+		{ID: "d", Label: "Placeholder", Enabled: true},
+	})
+	_ = source.SaveCommandSequence(plain.ID, []domain.CommandStep{{ID: "p", Command: "docker compose up -d", Enabled: true, Background: true}})
+
+	file := filepath.Join(t.TempDir(), "export.json")
+	if err := source.exportTo(file, nil); err != nil {
+		t.Fatal(err)
+	}
+	target := newTestApp(t)
+	preview, err := target.PreviewImport(file)
+	if err != nil || preview.New != 5 || preview.Existing != 0 {
+		t.Fatalf("preview = %+v, %v", preview, err)
+	}
+	if _, err := target.ApplyImport(file, domain.ImportOptions{KeepStepsEnabled: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare a path-, name- and order-sensitive description of both.
+	describe := func(a *App) []string {
+		ws := a.Workspace()
+		globalName := map[string]string{}
+		for _, g := range ws.GlobalCommands {
+			globalName[g.ID] = g.Name + "=" + g.Command
+		}
+		out := []string{}
+		for _, g := range ws.Groups {
+			out = append(out, fmt.Sprintf("group %s mode=%s collapsed=%v", g.Name, g.RunMode, g.Collapsed))
+			for _, id := range g.RepositoryIDs {
+				repo, _ := a.workspace.Repository(id)
+				out = append(out, fmt.Sprintf("  repo %q name=%q alias=%q path=%s pm=%q problem=%q", repo.DisplayName(), repo.Name, repo.Alias, repo.Path, repo.PackageManager, repo.Problem))
+				for _, s := range repo.CommandSequence {
+					out = append(out, fmt.Sprintf("    step %q script=%q global=%q command=%q enabled=%v bg=%v", s.Label, s.Script, globalName[s.GlobalCommand], s.Command, s.Enabled, s.Background))
+				}
+			}
+		}
+		return out
+	}
+	want, got := describe(source), describe(target)
+	if !slices.Equal(want, got) {
+		t.Fatalf("round trip differs:\nwant\n%s\ngot\n%s", strings.Join(want, "\n"), strings.Join(got, "\n"))
+	}
+	if !strings.Contains(strings.Join(got, "\n"), `repo "fixture (2)"`) || !strings.Contains(strings.Join(got, "\n"), `pm=""`) {
+		t.Fatalf("expected duplicate alias and plain folders:\n%s", strings.Join(got, "\n"))
+	}
+	_ = first
+	_ = parent
+
+	// Re-importing changes nothing: every folder is already registered.
+	if result, _ := target.ApplyImport(file, domain.ImportOptions{}); result.RepositoriesAdded != 0 || result.RepositoriesSkipped != 5 {
+		t.Fatalf("re-import = %+v", result)
 	}
 }

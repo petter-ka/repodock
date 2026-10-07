@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { useI18n } from "@/lib/i18n"
 
 export function PromptDialog({
-  open, title, description, label, initialValue = "", placeholder, submitLabel, onSubmit, onOpenChange,
+  open, title, description, label, initialValue = "", placeholder, submitLabel, allowEmpty = false, onSubmit, onOpenChange,
 }: {
   open: boolean
   title: string
@@ -14,6 +14,8 @@ export function PromptDialog({
   initialValue?: string
   placeholder?: string
   submitLabel: string
+  /** submit a blank value instead of disabling the submit button */
+  allowEmpty?: boolean
   onSubmit: (value: string) => Promise<void> | void
   onOpenChange: (open: boolean) => void
 }) {
@@ -27,7 +29,7 @@ export function PromptDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!value.trim()) return
+    if (!allowEmpty && !value.trim()) return
     setBusy(true)
     try {
       await onSubmit(value.trim())
@@ -51,7 +53,7 @@ export function PromptDialog({
           </label>
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>{t.common.cancel}</Button>
-            <Button type="submit" disabled={busy || !value.trim()}>{submitLabel}</Button>
+            <Button type="submit" disabled={busy || (!allowEmpty && !value.trim())}>{submitLabel}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

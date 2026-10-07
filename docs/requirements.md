@@ -41,6 +41,9 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-17 | Export groups and repositories to a JSON file and import them back (merge) | P1 |
 | FR-18 | Define workspace-wide global CLI commands and pick them as sequence steps; include them in export/import | P1 |
 | FR-19 | Answer interactive prompts (y/n, text, passwords) of running processes from the console | P1 |
+| FR-20 | Reorder repositories and move them between groups, and reorder sequence steps, by drag and drop | P1 |
+| FR-21 | Reorder groups by drag and drop | P1 |
+| FR-22 | Rename a repository with an alias; register the same folder several times and plain folders without package.json | P1 |
 
 ## Non-functional requirements
 
@@ -62,7 +65,7 @@ Needs enough observability to diagnose runaway local dev processes.
 
 ## Clarifications (2026-10-06)
 
-- FR-01: a folder must contain a valid `package.json` to be added. A registered repository whose `package.json` later becomes unreadable keeps its last known scripts and shows the problem.
+- FR-01: any folder can be added; one without `package.json` is a plain folder with no scripts (ADR-0015). The same folder, or a parent/child of a registered one, can be added again as a separate record (numbered alias). A registered repository whose `package.json` later becomes unreadable or disappears keeps its last known scripts and shows the problem.
 - FR-09: memory and CPU are aggregated over the whole process tree of a run.
 - FR-07: the sidebar shows each repository's command status. Green while any command is running (long-running scripts such as `npm run dev` stay green with a running count) or when the most recently finished command exited 0; red when it failed or crashed; neutral after the user stopped it from RepoDock. The status reflects runs of the current app session; dismissed or cleared runs no longer count.
 - FR-11: sequence steps are foreground (must exit 0) or background (start and continue). Sequences run in the backend (ADR-0009).
@@ -78,7 +81,7 @@ Needs enough observability to diagnose runaway local dev processes.
 - FR-17: see ADR-0011. Acceptance criteria:
   - export all groups, or a single group, to a user-chosen `.json` file via the native Save dialog;
   - the file contains group names, run modes, repository names, portable paths (`~/…`) and command sequences — never env file contents, discovered scripts or internal IDs;
-  - import shows a preview (new/existing groups; new, missing, already registered and duplicate repositories; every step's command) before anything changes;
+  - import shows a preview (new/existing groups; new, missing and already registered repositories (a folder repeated in the file is imported once per entry); every step's command) before anything changes;
   - import merges: groups by name, repositories by path; existing records are not modified;
   - imported steps are disabled unless the user opts in; nothing runs during import;
   - invalid, foreign or newer-version files are rejected with a clear message;
@@ -98,6 +101,20 @@ Needs enough observability to diagnose runaway local dev processes.
   - sent input is echoed in the console; hidden input is masked and never shown, logged or emitted in clear text;
   - a process that does not read its input cannot freeze the app;
   - limitation: prompts that require a real terminal (arrow-key menus) are not supported.
+
+- FR-20 (2026-10-07): see ADR-0014. Acceptance criteria:
+  - a repository can be dragged to any position in its own group or another group; an insertion line shows where it lands; dropping on a group header, empty group or collapsed group appends;
+  - the new order is persisted and used by sequential group runs;
+  - the repository menu offers Move up / Move down as the keyboard alternative; dragging is disabled while the sidebar filter is active;
+  - sequence steps can be dragged by their grip handle; the draft is reordered and saved only with Save;
+  - dropping files or text onto the sidebar or the sequence editor does nothing.
+
+- FR-21 / FR-22 (2026-10-07): see ADR-0015. Acceptance criteria:
+  - a group can be dragged by its header above or below another group, or moved with Move group up/down; the order persists;
+  - "Rename (alias)…" in the repository menu sets a display name used everywhere; clearing it restores the discovered name;
+  - adding an already registered folder creates another record named "<name> (2)", "(3)", …; parent and child folders can be added;
+  - a folder without package.json is added as a plain folder: no scripts, no warning, a "folder" label; custom and global commands and sequences work;
+  - exports carry group order, member order, aliases, duplicate/nested/plain folders and full sequences — step order and the enabled selection (document version 3); importing into an empty workspace reproduces the same sidebar; re-importing skips folders that were already registered.
 
 ## Empty command semantics
 

@@ -1,7 +1,9 @@
 package transfer
 
 import (
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -149,17 +151,37 @@ func TestPlanAndMerge(t *testing.T) {
 	}
 }
 
-func TestDuplicatePathsInsideFile(t *testing.T) {
-	doc := Document{Format: Format, Version: 1, Groups: []DocumentGroup{
-		{Name: "A", Repositories: []DocumentRepository{{Name: "x", Path: "~/x"}, {Name: "x again", Path: "~/x"}}},
+func TestDuplicatePathsInsideFileImportOncePerEntry(t *testing.T) {
+	doc := Document{Format: Format, Version: 3, Groups: []DocumentGroup{
+		{Name: "A", Repositories: []DocumentRepository{{Name: "x", Path: "~/x"}, {Name: "x", Alias: "x staging", Path: "~/x"}}},
 	}}
 	preview := Plan(doc, domain.Workspace{}, env(filepath.Join(home, "x")))
-	if preview.New != 1 || preview.Groups[0].Repositories[1].Status != domain.ImportDuplicate {
+	if preview.New != 2 || preview.Groups[0].Repositories[1].Status != domain.ImportNew || preview.Groups[0].Repositories[1].Name != "x staging" {
 		t.Fatalf("preview = %+v", preview)
 	}
-	_, added, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{})
-	if len(added) != 1 {
-		t.Fatalf("added = %v", added)
+	merged, added, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{})
+	if len(added) != 2 || merged.Repositories[1].Alias != "x staging" || merged.Repositories[0].Alias != "" {
+		t.Fatalf("merged = %+v", merged.Repositories)
+	}
+	// Re-importing skips every entry whose folder is already registered.
+	_, again, result := Merge(doc, merged, env(), domain.ImportOptions{})
+	if len(again) != 0 || result.RepositoriesSkipped != 2 {
+		t.Fatalf("re-import added %v, result %+v", again, result)
+	}
+}
+
+func TestAliasRoundTripAndVersionGate(t *testing.T) {
+	ws := domain.Workspace{
+		Groups:       []domain.Group{{ID: "g", Name: "G", RepositoryIDs: []string{"r"}}},
+		Repositories: []domain.Repository{{ID: "r", Name: "api", Alias: "api (prod)", Path: filepath.Join(home, "api"), GroupID: "g"}},
+	}
+	doc, err := Build(ws, nil, home, time.Now())
+	if err != nil || doc.Version != 3 || doc.Groups[0].Repositories[0].Alias != "api (prod)" {
+		t.Fatalf("doc = %+v, %v", doc, err)
+	}
+	old := `{"format":"repodock.workspace-export","version":2,"groups":[{"name":"G","runMode":"sequential","collapsed":false,"repositories":[{"name":"a","alias":"b","path":"/x","commandSequence":null}]}]}`
+	if _, err := Parse([]byte(old)); err == nil {
+		t.Fatal("an alias in a version 2 document must be rejected")
 	}
 }
 
@@ -285,5 +307,81 @@ func TestMergeGlobalCommands(t *testing.T) {
 	}
 	if api.CommandSequence[1].GlobalCommand != "mine-install" {
 		t.Fatalf("references must be remapped to local IDs: %+v", api.CommandSequence)
+	}
+}
+
+func TestMergeKeepsDocumentGroupOrder(t *testing.T) {
+	current := domain.Workspace{Groups: []domain.Group{{ID: "x", Name: "X"}, {ID: "b", Name: "B"}}}
+	names := func(ws domain.Workspace) []string {
+		out := []string{}
+		for _, g := range ws.Groups {
+			out = append(out, g.Name)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		doc  []string
+		want []string
+	}{
+		{[]string{"A", "B", "C"}, []string{"X", "A", "B", "C"}}, // around an existing group
+		{[]string{"A", "C"}, []string{"X", "B", "A", "C"}},      // nothing shared: appended in order
+		// Existing groups keep their order; each new group follows its
+		// predecessor in the document (A after B, C after X).
+		{[]string{"B", "A", "X", "C"}, []string{"X", "C", "B", "A"}},
+	} {
+		doc := Document{Format: Format, Version: 3}
+		for _, n := range tc.doc {
+			doc.Groups = append(doc.Groups, DocumentGroup{Name: n})
+		}
+		merged, _, _ := Merge(doc, current, env(), domain.ImportOptions{})
+		if got := names(merged); !slices.Equal(got, tc.want) {
+			t.Fatalf("doc %v: groups = %v, want %v", tc.doc, got, tc.want)
+		}
+	}
+}
+
+func TestPlainFolderFlagRoundTrip(t *testing.T) {
+	ws := domain.Workspace{
+		Groups: []domain.Group{{ID: "g", Name: "G", RepositoryIDs: []string{"p", "n"}}},
+		Repositories: []domain.Repository{
+			{ID: "p", Name: "infra", Path: filepath.Join(home, "infra"), GroupID: "g"},
+			{ID: "n", Name: "api", PackageManager: "pnpm", Path: filepath.Join(home, "api"), GroupID: "g"},
+		},
+	}
+	doc, _ := Build(ws, nil, home, time.Now())
+	if !doc.Groups[0].Repositories[0].PlainFolder || doc.Groups[0].Repositories[1].PlainFolder {
+		t.Fatalf("flags = %+v", doc.Groups[0].Repositories)
+	}
+	merged, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{})
+	if merged.Repositories[0].PackageManager != "" || merged.Repositories[1].PackageManager != UnknownPackageManager {
+		t.Fatalf("imported = %+v", merged.Repositories)
+	}
+}
+
+func TestMergeKeepsStepOrderAndSelection(t *testing.T) {
+	steps := []domain.CommandStep{
+		{ID: "1", Label: "install", Command: "npm ci", Enabled: false},
+		{ID: "2", Label: "build", Script: "build", Enabled: true},
+		{ID: "3", Label: "dev", Script: "dev", Enabled: true, Background: true},
+		{ID: "4", Label: "lint", Script: "lint", Enabled: false},
+	}
+	doc := Document{Format: Format, Version: 3, Groups: []DocumentGroup{{Name: "G", Repositories: []DocumentRepository{{Name: "x", Path: "~/x", CommandSequence: steps}}}}}
+	describe := func(list []domain.CommandStep) []string {
+		out := []string{}
+		for _, s := range list {
+			out = append(out, fmt.Sprintf("%s enabled=%v bg=%v", s.Label, s.Enabled, s.Background))
+		}
+		return out
+	}
+
+	kept, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{KeepStepsEnabled: true})
+	if got, want := describe(kept.Repositories[0].CommandSequence), describe(steps); !slices.Equal(got, want) {
+		t.Fatalf("kept = %v, want %v", got, want)
+	}
+	reviewed, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{})
+	for i, s := range reviewed.Repositories[0].CommandSequence {
+		if s.Enabled || s.Label != steps[i].Label || s.Background != steps[i].Background {
+			t.Fatalf("opt-out step %d = %+v", i, s)
+		}
 	}
 }

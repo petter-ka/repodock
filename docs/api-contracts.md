@@ -9,13 +9,13 @@ Lifecycle hooks are package-level (`app.Hooks`) so they are not bound to the fro
 - `StartupReport()` — workspace path, recovered-backup path (if a corrupt file was moved aside) and warnings.
 - `Workspace()` — current workspace snapshot.
 - `BrowseRepository()` — native folder picker; empty string means cancelled.
-- `AddRepository(path, groupID)` — requires a valid `package.json`. An already registered path returns the existing (refreshed) record.
-- `RefreshRepository(id)`, `RefreshAll()` — re-read metadata. A missing/invalid `package.json` keeps the record and sets `problem`.
-- `CheckRepositoryFolder(path)` — never fails; returns `{ path, exists, valid (readable package.json), name, problem, registeredId, registeredName }`. Changes nothing.
+- `AddRepository(path, groupID)` — always creates a new record. The folder may have a readable `package.json` or none (plain folder: no scripts, `packageManager: ""`). A folder that is already registered is allowed; the new record gets a numbered alias `<name> (n)` (ADR-0015).
+- `RefreshRepository(id)`, `RefreshAll()` — re-read metadata. A missing/invalid `package.json` keeps the record and sets `problem` (a plain folder without `package.json` stays healthy).
+- `CheckRepositoryFolder(path)` — never fails; returns `{ path, exists, valid (readable package.json, or none), name, problem, registeredId, registeredName }`. `registeredId` is informational: several records may share a folder. Changes nothing.
 - `RelocateRepository(id, path)` — points a repository at another folder; keeps ID, group and sequence; refreshes metadata. Rejected for unusable folders, folders registered to another repository, or while the repository has running processes.
 - `RemoveRepository(id)` — stops the repository's processes and removes the registration. Nothing on disk is touched.
 - `SetGroupRunMode(id, mode)` — `"sequential"` or `"parallel"`; persisted on the group.
-- `CreateGroup(name)`, `RenameGroup(id, name)`, `DeleteGroup(id)` (members move to the first remaining group; the last group cannot be deleted), `SetGroupCollapsed(id, collapsed)`, `AssignRepository(id, groupID)`.
+- `CreateGroup(name)`, `RenameGroup(id, name)`, `DeleteGroup(id)` (members move to the first remaining group; the last group cannot be deleted), `SetGroupCollapsed(id, collapsed)`, `AssignRepository(id, groupID)` (appends), `RenameRepository(id, alias)` (display name; trimmed, single line, ≤ 200 chars; blank clears), `MoveGroup(id, index)` (sidebar order; index excludes the group; negative appends), `MoveRepository(id, groupID, index)` (inserts at `index` among the target group's other members; negative or out-of-range appends; same group reorders — ADR-0014).
 - `SaveCommandSequence(repoID, steps)` — persists ordered steps; blank labels and missing IDs are filled in. Each step keeps one kind: `script`, else `globalCommand`, else `command`.
 - `SaveGlobalCommands(commands)` — replaces the workspace's global commands (`{ id, name, command }`, ADR-0012) and returns the normalized list. Rejects empty or duplicate names, empty or multi-line commands. Steps referencing a removed command fail when run.
 
@@ -48,8 +48,8 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 
 - `ExportWorkspace(groupIDs)` — native Save dialog, then writes the export document (all groups when `groupIDs` is empty). Returns the path, or `""` when cancelled.
 - `ChooseImportFile()` — native Open dialog (`*.json`). Returns the path, or `""` when cancelled.
-- `PreviewImport(path)` — validates the file and returns an `ImportPreview` (`groups[]` with `exists`, repositories with `status` new|missing|existing|duplicate and `steps`; `globalCommands[]` with `{ id, name, command, status (new|existing|renamed), importName }`; counts `groupsToCreate`, `new`, `existing`, `missing`, `shellCommands`). Preview steps reference `globalCommands[].id`. Changes nothing.
-- `ApplyImport(path, { keepStepsEnabled, pathOverrides })` — `pathOverrides` maps a preview path to a replacement folder; every override is validated first and an unusable one rejects the import. Merges and returns `{ groupsCreated, globalCommandsAdded, repositoriesAdded, repositoriesSkipped }`. Emits `workspace:changed`. Executes nothing.
+- `PreviewImport(path)` — validates the file and returns an `ImportPreview` (`groups[]` with `exists`, repositories with `status` new|missing|existing (a folder repeated in the file is imported once per entry; `duplicate` is no longer produced) and `steps`; `globalCommands[]` with `{ id, name, command, status (new|existing|renamed), importName }`; counts `groupsToCreate`, `new`, `existing`, `missing`, `shellCommands`). Preview steps reference `globalCommands[].id`. Changes nothing.
+- `ApplyImport(path, { keepStepsEnabled, pathOverrides })` — step order is always kept; `keepStepsEnabled` keeps each step's enabled flag (the dialog defaults to true; false imports every step disabled). `pathOverrides` maps a preview path to a replacement folder; every override is validated first and an unusable one rejects the import. Merges and returns `{ groupsCreated, globalCommandsAdded, repositoriesAdded, repositoriesSkipped }`. Emits `workspace:changed`. Executes nothing.
 
 ## Environment
 

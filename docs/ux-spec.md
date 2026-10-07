@@ -3,9 +3,9 @@
 ## Primary layout
 
 1. Narrow application rail on the far left.
-2. Grouped repository navigation. Each repository shows a status in place of its folder icon: a green pulsing dot plus the running-count badge while any command runs — dev servers and watchers (`npm start`, `npm run dev`) never finish, so a live process wins over other results; otherwise the most recently *finished* command decides: green check for exit code 0, red ✗ for a failure or crash (including a process killed outside RepoDock). A command stopped by the user from RepoDock is neutral (normal folder icon), never red. Skipped no-op steps are ignored; the tooltip names the command, status, exit code and time. Each group header has a run/stop control, progress (`done/total`) while running, and a menu with the run mode (Sequential / Parallel).
+2. Grouped repository navigation. Each repository shows a status in place of its folder icon: a green pulsing dot plus the running-count badge while any command runs — dev servers and watchers (`npm start`, `npm run dev`) never finish, so a live process wins over other results; otherwise the most recently *finished* command decides: green check for exit code 0, red ✗ for a failure or crash (including a process killed outside RepoDock). A command stopped by the user from RepoDock is neutral (normal folder icon), never red. Skipped no-op steps are ignored; the tooltip names the command, status, exit code and time. Each group header has a run/stop control, progress (`done/total`) while running, and a menu with the run mode (Sequential / Parallel). Repositories can be dragged within a group or onto another group (insertion line; header/empty/collapsed group appends; disabled while filtering); the repository menu has Rename (alias)…, Move up / Move down and Move to group. Groups are dragged by their header (insertion line above/below a group) or moved with Move group up/down in the group menu. A repository shows its alias when set (the header also shows the discovered name in muted text); plain folders show a "folder" label instead of the package manager.
 3. Repository header with path, package manager, refresh, sequence and environment actions.
-4. Script chips + custom command input.
+4. Script chips (collapsed by default behind a "Scripts N" toggle that shows a running count; the open/closed choice is remembered per device), a **Sequence** line with the enabled steps as chips in run order (latest run's per-step status; click a chip to run just that step; Run/Cancel sequence and Edit controls), and the custom command input.
 5. Active process strip with PID / RAM / CPU / stop.
 6. Main console.
 
@@ -20,7 +20,7 @@
 
 ## Sequence editor
 
-- Steps run strictly top to bottom in the order shown; ↑/↓ (or Alt+↑/↓) reorder them before saving.
+- Steps run strictly top to bottom in the order shown; drag a step by its grip handle, or use ↑/↓ (or Alt+↑/↓), to reorder them before saving.
 - Each row leads with what the step runs: a Script/Command switch and the script picker or the command field. The name is a secondary, optional field below (defaults to the script or command).
 - "Command step" adds a row and puts the cursor in its command field.
 - The step type switch is Script / Global / Command. **Global** shows a select of the workspace's global commands (name — command) and a ⚙ button that opens the **Global commands** dialog. "Global step" adds a row using the first global command, or opens the dialog when none exist. A step whose global command was deleted is flagged.
@@ -46,7 +46,7 @@
 - Import always shows a preview dialog before changing anything. Commands that will be imported are visible, shell commands trigger a warning, and "Keep imported sequence steps enabled" is off by default.
 - Global commands in the file are listed first with their full command text and a status: new, already present, or renamed ("name taken — added as …"). Global steps in the repository list show the name and command they resolve to.
 - Results are announced as a notification.
-- Repositories whose folder is missing on this machine show an inline path field with **Browse…** in the preview. Validation appears under the field (package.json found / folder not found / no package.json / already registered). Invalid folders are outlined in red and block **Import** until fixed or cleared; leaving the field empty imports the repository with a warning.
+- Repositories whose folder is missing on this machine show an inline path field with **Browse…** in the preview. Validation appears under the field (package.json found / folder not found / already registered). Invalid folders are outlined in red and block **Import** until fixed or cleared; leaving the field empty imports the repository with a warning.
 - A repository with a problem shows a banner with **Change folder…**; the same action is in the repository menu.
 
 ## Group runs

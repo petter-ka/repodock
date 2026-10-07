@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowDownUp, CheckCircle2, ChevronDown, CircleDot, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
-import { forwardRef, useMemo, useState } from "react"
+import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { forwardRef, useMemo, useState, type DragEvent } from "react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { PromptDialog } from "@/components/shared/PromptDialog"
 import { Badge } from "@/components/ui/badge"
@@ -13,12 +13,13 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { modLabel } from "@/lib/keyboard"
 import { cn, formatTime } from "@/lib/utils"
-import { type Group, type GroupRepoState, type GroupRunMode, type ImportPreview, type Repository } from "../domain"
+import { displayName, type Group, type GroupRepoState, type GroupRunMode, type ImportPreview, type Repository } from "../domain"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
 import { useProcessVersion, useWorkspaceState } from "../hooks/useStores"
 import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
 import { latestRunHealth, type RepoHealth } from "../repoStatus"
+import { isNoopSlot, landingIndex, slotFromPointer } from "../reorder"
 import { GlobalCommandsDialog } from "./GlobalCommandsDialog"
 import { ImportDialog } from "./ImportDialog"
 
@@ -27,7 +28,20 @@ type DialogState =
   | { kind: "renameGroup"; group: Group }
   | { kind: "deleteGroup"; group: Group }
   | { kind: "removeRepo"; repo: Repository }
+  | { kind: "renameRepo"; repo: Repository }
   | null
+
+/** MIME types of in-app drags; other drags (files, text) are ignored. */
+const REPO_DRAG_TYPE = "application/x-repodock-repo"
+const GROUP_DRAG_TYPE = "application/x-repodock-group"
+
+/** What is being dragged and its index (within its group, or among groups). */
+type DragState = { kind: "repo"; repoId: string; groupId: string; from: number } | { kind: "group"; groupId: string; from: number }
+/**
+ * Insertion slot, counted before the dragged item is removed: within a
+ * group's members for a repository, among the groups for a group.
+ */
+type DropState = { kind: "repo"; groupId: string; slot: number } | { kind: "group"; slot: number }
 
 export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryActions }>(function RepoSidebar({ actions }, filterRef) {
   const { t, f } = useI18n()
@@ -37,6 +51,8 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   const [dialog, setDialog] = useState<DialogState>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [globalsOpen, setGlobalsOpen] = useState(false)
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const [drop, setDrop] = useState<DropState | null>(null)
 
   const { running, latest } = useMemo(() => {
     void version
@@ -52,8 +68,42 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   const totalRunning = [...running.values()].reduce((sum, n) => sum + n, 0)
   const byId = useMemo(() => new Map(workspace.repositories.map((repo) => [repo.id, repo])), [workspace.repositories])
   const needle = query.trim().toLowerCase()
-  const matches = (repo: Repository) => !needle || `${repo.name} ${repo.path}`.toLowerCase().includes(needle)
+  const matches = (repo: Repository) => !needle || `${repo.alias} ${repo.name} ${repo.path}`.toLowerCase().includes(needle)
   const anyMatch = workspace.repositories.some(matches)
+  // Positions are ambiguous while filtering, so drag-and-drop needs the full list.
+  const canDrag = !needle
+
+  const endDrag = () => { setDrag(null); setDrop(null) }
+  const moveTo = (groupId: string, slot: number) => {
+    if (drag?.kind !== "repo") return
+    const from = drag.groupId === groupId ? drag.from : -1
+    if (!isNoopSlot(slot, from)) void actions.move(drag.repoId, groupId, landingIndex(slot, from))
+  }
+  const accept = (event: DragEvent, next: DropState) => {
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "move"
+    if (JSON.stringify(drop) !== JSON.stringify(next)) setDrop(next)
+  }
+  /** Repository drag over a group (slot = members.length appends). Group drags pass through to the section. */
+  const overGroup = (event: DragEvent, groupId: string, slot: number) => {
+    if (drag?.kind === "repo") accept(event, { kind: "repo", groupId, slot })
+  }
+  const overSection = (event: DragEvent<HTMLElement>, groupIndex: number, groupId: string, size: number) => {
+    if (drag?.kind === "group") accept(event, { kind: "group", slot: slotFromPointer(groupIndex, event.clientY, event.currentTarget.getBoundingClientRect()) })
+    else overGroup(event, groupId, size)
+  }
+  const dropOnSection = (event: DragEvent, groupId: string, size: number) => {
+    if (!drag) return
+    event.preventDefault()
+    if (drag.kind === "group") {
+      if (drop?.kind === "group" && !isNoopSlot(drop.slot, drag.from)) void actions.moveGroup(drag.groupId, landingIndex(drop.slot, drag.from))
+    } else {
+      moveTo(groupId, drop?.kind === "repo" && drop.groupId === groupId ? drop.slot : size)
+    }
+    endDrag()
+  }
+  const groupDropSlot = drag?.kind === "group" && drop?.kind === "group" && !isNoopSlot(drop.slot, drag.from) ? drop.slot : null
 
   return (
     <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-sidebar">
@@ -98,7 +148,11 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
         </div>
       </div>
 
-      <nav aria-label={t.rail.repos} className="thin-scrollbar flex-1 overflow-y-auto px-2 py-3">
+      <nav
+        aria-label={t.rail.repos}
+        className="thin-scrollbar flex-1 overflow-y-auto px-2 py-3"
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDrop(null) }}
+      >
         <button
           aria-current={selectedRepoId === null ? "page" : undefined}
           onClick={() => workspaceStore.select(null)}
@@ -109,7 +163,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
           {totalRunning > 0 && <Badge variant="success" className="tabular-nums">{totalRunning}</Badge>}
         </button>
         {needle && !anyMatch && <p className="px-3 py-2 text-xs text-muted-foreground">{t.sidebar.noMatches}</p>}
-        {workspace.groups.map((group) => {
+        {workspace.groups.map((group, groupIndex) => {
           const repos = group.repositoryIds.map((id) => byId.get(id)).filter((repo): repo is Repository => !!repo)
           const visible = repos.filter(matches)
           if (needle && visible.length === 0) return null
@@ -123,9 +177,36 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
           // Background steps (dev servers) outlive the group run, so the
           // stop control stays available while any member has processes.
           const groupActive = groupRunning || repos.some((repo) => (running.get(repo.id) ?? 0) > 0)
+          const dropSlot = drag?.kind === "repo" && drop?.kind === "repo" && drop.groupId === group.id && !isNoopSlot(drop.slot, drag.groupId === group.id ? drag.from : -1) ? drop.slot : null
+          const lastGroup = groupIndex === workspace.groups.length - 1
+          // Dropping a repository anywhere on the section but an item (header,
+          // empty list, collapsed group) appends to the group. A group drag
+          // over a section inserts above or below it.
           return (
-            <section key={group.id} className="mb-3">
-              <div className="group/header flex items-center gap-1 pl-1 pr-1">
+            <section
+              key={group.id}
+              className={cn("relative mb-3 rounded-md transition", drag?.kind === "group" && drag.groupId === group.id && "opacity-40")}
+              onDragOver={(event) => overSection(event, groupIndex, group.id, repos.length)}
+              onDrop={(event) => dropOnSection(event, group.id, repos.length)}
+            >
+              {(groupDropSlot === groupIndex || (lastGroup && groupDropSlot === groupIndex + 1)) && (
+                <span aria-hidden className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary", groupDropSlot === groupIndex ? "-top-1.5" : "-bottom-1.5")} />
+              )}
+              <div
+                draggable={canDrag}
+                onDragStart={(event) => {
+                  // Repository rows are inside the section; only start a group
+                  // drag from the header itself.
+                  const section = event.currentTarget.closest("section")
+                  if (section) event.dataTransfer.setDragImage(section, event.clientX - section.getBoundingClientRect().left, event.clientY - section.getBoundingClientRect().top)
+                  event.dataTransfer.effectAllowed = "move"
+                  event.dataTransfer.setData(GROUP_DRAG_TYPE, group.id)
+                  setDrag({ kind: "group", groupId: group.id, from: groupIndex })
+                }}
+                onDragEnd={endDrag}
+                title={canDrag ? t.sidebar.dragGroup : undefined}
+                className={cn("group/header flex items-center gap-1 rounded-md pl-1 pr-1 transition", canDrag && "cursor-grab active:cursor-grabbing", dropSlot !== null && (collapsed || repos.length === 0) && "bg-primary/10 ring-1 ring-primary/40")}
+              >
                 <button
                   className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   aria-expanded={!collapsed}
@@ -185,6 +266,8 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                     <DropdownMenuItem onSelect={() => void actions.addRepository(group.id)}><Plus /> {t.sidebar.addHere}</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setDialog({ kind: "renameGroup", group })}><Pencil /> {t.sidebar.renameGroup}</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => void actions.exportWorkspace([group.id])}><Download /> {t.transfer.exportGroup}</DropdownMenuItem>
+                    <DropdownMenuItem disabled={groupIndex === 0} onSelect={() => void actions.moveGroup(group.id, groupIndex - 1)}><ArrowUp /> {t.sidebar.moveGroupUp}</DropdownMenuItem>
+                    <DropdownMenuItem disabled={lastGroup} onSelect={() => void actions.moveGroup(group.id, groupIndex + 1)}><ArrowDown /> {t.sidebar.moveGroupDown}</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem destructive disabled={workspace.groups.length < 2} onSelect={() => setDialog({ kind: "deleteGroup", group })}><Trash2 /> {t.sidebar.deleteGroup}</DropdownMenuItem>
                   </DropdownMenuContent>
@@ -193,10 +276,12 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
 
               {!collapsed && (
                 <ul className="mt-0.5 space-y-0.5">
-                  {visible.map((repo) => (
+                  {visible.map((repo) => { const index = repos.indexOf(repo); return (
                     <RepoItem
                       key={repo.id}
                       repo={repo}
+                      index={index}
+                      groupSize={repos.length}
                       groups={workspace.groups}
                       selected={repo.id === selectedRepoId}
                       running={running.get(repo.id) ?? 0}
@@ -204,9 +289,24 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                       groupState={memberState.get(repo.id)}
                       actions={actions}
                       onRemove={() => setDialog({ kind: "removeRepo", repo })}
+                      onRename={() => setDialog({ kind: "renameRepo", repo })}
+                      dragging={drag?.kind === "repo" && drag.repoId === repo.id}
+                      dropEdge={dropSlot === index ? "before" : dropSlot === index + 1 && index === repos.length - 1 ? "after" : null}
+                      onDragStart={canDrag ? (event) => {
+                        event.dataTransfer.effectAllowed = "move"
+                        event.dataTransfer.setData(REPO_DRAG_TYPE, repo.id)
+                        event.stopPropagation()
+                        setDrag({ kind: "repo", repoId: repo.id, groupId: group.id, from: index })
+                      } : undefined}
+                      onDragOver={(event) => overGroup(event, group.id, slotFromPointer(index, event.clientY, event.currentTarget.getBoundingClientRect()))}
+                      onDragEnd={endDrag}
                     />
-                  ))}
-                  {repos.length === 0 && <li className="px-7 py-1.5 text-xs text-muted-foreground">{t.sidebar.emptyGroup}</li>}
+                  ) })}
+                  {repos.length === 0 && (
+                    <li className={cn("rounded-lg px-7 py-1.5 text-xs text-muted-foreground transition", dropSlot !== null && "bg-primary/10 text-foreground ring-1 ring-primary/40")}>
+                      {drag?.kind === "repo" ? t.sidebar.dropHere : t.sidebar.emptyGroup}
+                    </li>
+                  )}
                 </ul>
               )}
             </section>
@@ -235,6 +335,18 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
           else await actions.createGroup(name)
         }}
       />
+      <PromptDialog
+        open={dialog?.kind === "renameRepo"}
+        title={t.aliasDialog.title}
+        description={dialog?.kind === "renameRepo" ? f(t.aliasDialog.description, { name: dialog.repo.name, path: dialog.repo.path }) : undefined}
+        label={t.aliasDialog.label}
+        placeholder={dialog?.kind === "renameRepo" ? dialog.repo.name : ""}
+        initialValue={dialog?.kind === "renameRepo" ? dialog.repo.alias : ""}
+        submitLabel={t.common.rename}
+        allowEmpty
+        onOpenChange={(open) => { if (!open) setDialog(null) }}
+        onSubmit={async (alias) => { if (dialog?.kind === "renameRepo") await actions.renameRepository(dialog.repo.id, alias) }}
+      />
       <ConfirmDialog
         open={dialog?.kind === "deleteGroup"}
         destructive
@@ -247,7 +359,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
       <ConfirmDialog
         open={dialog?.kind === "removeRepo"}
         destructive
-        title={dialog?.kind === "removeRepo" ? f(t.confirm.removeRepoTitle, { name: dialog.repo.name }) : ""}
+        title={dialog?.kind === "removeRepo" ? f(t.confirm.removeRepoTitle, { name: displayName(dialog.repo) }) : ""}
         description={t.confirm.removeRepoBody}
         confirmLabel={t.common.remove}
         onOpenChange={(open) => { if (!open) setDialog(null) }}
@@ -263,8 +375,11 @@ const healthIcon: Record<RepoHealth, React.ReactNode> = {
   danger: <XCircle className="size-4 text-destructive" />,
 }
 
-function RepoItem({ repo, groups, selected, running, latest, groupState, actions, onRemove }: {
+function RepoItem({ repo, index, groupSize, groups, selected, running, latest, groupState, actions, onRemove, onRename, dragging, dropEdge, onDragStart, onDragOver, onDragEnd }: {
   repo: Repository
+  /** position within its group */
+  index: number
+  groupSize: number
   groups: Group[]
   selected: boolean
   running: number
@@ -274,6 +389,14 @@ function RepoItem({ repo, groups, selected, running, latest, groupState, actions
   groupState?: GroupRepoState
   actions: RepositoryActions
   onRemove: () => void
+  onRename: () => void
+  dragging: boolean
+  /** where the drop indicator is drawn, if this item is the drop target */
+  dropEdge: "before" | "after" | null
+  /** undefined while dragging is unavailable (e.g. the list is filtered) */
+  onDragStart?: (event: DragEvent<HTMLLIElement>) => void
+  onDragOver: (event: DragEvent<HTMLLIElement>) => void
+  onDragEnd: () => void
 }) {
   const { t, f } = useI18n()
   const lastRunText = !latest
@@ -287,19 +410,26 @@ function RepoItem({ repo, groups, selected, running, latest, groupState, actions
           time: formatTime(latest.run.startedAt),
         })
   return (
-    <li className={cn("group/item relative flex items-center rounded-lg transition", selected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground")}>
+    <li
+      draggable={!!onDragStart}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      className={cn("group/item relative flex items-center rounded-lg transition", selected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground", dragging && "opacity-40")}
+    >
+      {dropEdge && <span aria-hidden className={cn("pointer-events-none absolute inset-x-2 h-0.5 rounded-full bg-primary", dropEdge === "before" ? "-top-px" : "-bottom-px")} />}
       <button
         aria-current={selected ? "page" : undefined}
         onClick={() => workspaceStore.select(repo.id)}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-2 pl-3 pr-9 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        title={latest ? `${repo.path}\n${lastRunText}` : repo.path}
+        title={[repo.alias && repo.alias !== repo.name ? repo.name : "", repo.path, lastRunText].filter(Boolean).join("\n")}
       >
         {latest ? (
           <span className="shrink-0" role="img" aria-label={lastRunText}>{healthIcon[latest.health]}</span>
         ) : (
           <FolderGit2 className="size-4 shrink-0" />
         )}
-        <span className="min-w-0 flex-1 truncate font-medium">{repo.name}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{displayName(repo)}</span>
         {groupState?.status === "pending" ? (
           <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-label={t.groupRun.queued} />
         ) : groupState?.status === "failed" ? (
@@ -309,7 +439,7 @@ function RepoItem({ repo, groups, selected, running, latest, groupState, actions
         ) : running > 0 ? (
           <Badge variant="success" className="tabular-nums">{running}</Badge>
         ) : (
-          <span className="text-[10px] uppercase tracking-wide opacity-60">{repo.packageManager}</span>
+          <span className="text-[10px] uppercase tracking-wide opacity-60">{repo.packageManager || t.sidebar.folder}</span>
         )}
       </button>
       <DropdownMenu>
@@ -319,9 +449,12 @@ function RepoItem({ repo, groups, selected, running, latest, groupState, actions
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="right">
-          <DropdownMenuLabel className="max-w-56 truncate normal-case tracking-normal">{repo.name}</DropdownMenuLabel>
+          <DropdownMenuLabel className="max-w-56 truncate normal-case tracking-normal">{displayName(repo)}</DropdownMenuLabel>
+          <DropdownMenuItem onSelect={onRename}><Pencil /> {t.sidebar.renameRepo}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void actions.refresh(repo)}><RefreshCw /> {t.common.refresh}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void actions.relocate(repo)}><FolderSearch /> {t.relocate.action}</DropdownMenuItem>
+          <DropdownMenuItem disabled={index === 0} onSelect={() => void actions.move(repo.id, repo.groupId, index - 1)}><ArrowUp /> {t.sidebar.moveUp}</DropdownMenuItem>
+          <DropdownMenuItem disabled={index >= groupSize - 1} onSelect={() => void actions.move(repo.id, repo.groupId, index + 1)}><ArrowDown /> {t.sidebar.moveDown}</DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={groups.length < 2}><FolderInput /> {t.sidebar.moveTo}</DropdownMenuSubTrigger>
             <DropdownMenuSubContent>

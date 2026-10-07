@@ -36,3 +36,6 @@ Use the following template for new architectural decisions:
 | 0011 | Export/import groups and repositories as JSON | Accepted |
 | 0012 | Workspace-wide global commands referenced by sequence steps | Accepted |
 | 0013 | Answer process prompts through a stdin pipe | Accepted |
+| 0014 | Drag-and-drop ordering of repositories and sequence steps | Accepted |
+| 0015 | Several records per folder, aliases, plain folders, group ordering | Accepted |
+| 0016 | TanStack Virtual console and constant-memory scrollback | Accepted |

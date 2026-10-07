@@ -47,7 +47,7 @@ A separate, versioned export format (`docs/data-model.md`, "Export document"). V
    - new repositories get fresh IDs and are refreshed from their `package.json`;
    - for a repository whose folder is **missing on this machine**, the preview offers a path field with a native folder picker. The chosen folder is checked live (`CheckRepositoryFolder`: exists, readable `package.json`, already registered) and sent as `pathOverrides`. `ApplyImport` re-validates every override and rejects the whole import if one is unusable, so a typo cannot add a broken record. An override that points at an already registered folder is skipped like any duplicate;
    - a missing folder left empty is still added and shows its problem; it can be fixed later with **Change folder…** (`RelocateRepository`), which keeps the record's ID, group and command sequence;
-   - **imported steps are disabled** unless the user ticks "Keep imported sequence steps enabled".
+   - ~~imported steps are disabled unless the user ticks "Keep imported sequence steps enabled".~~ **Amended 2026-10-07 (ADR-0015):** step order and the exported enabled/disabled selection are kept by default; the user can untick "Keep the exported step selection" to import every step disabled. The preview shows each step's position and whether it will be enabled.
 4. Nothing is executed during or after import.
 
 The `transfer` backend module owns building, parsing, planning and merging (pure functions) plus file I/O; the app facade owns the native dialogs.
@@ -64,7 +64,7 @@ The `transfer` backend module owns building, parsing, planning and merging (pure
 
 ## Consequences
 
-- R-007 is mitigated by preview, visible commands, disabled-by-default steps and no execution.
+- R-007 is mitigated by preview, visible commands (with each step's position and enabled state), the shell-command warning, an opt-out that imports every step disabled, and no execution. (Disabled-by-default steps were replaced by an opt-out on 2026-10-07 so the exported selection round-trips.)
 - The export format is a public contract: changes need a `version` bump and a migration in `Parse`.
 - Shared files may still contain internal hostnames or paths; users decide what to share.
 

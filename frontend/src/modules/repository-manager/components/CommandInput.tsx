@@ -3,7 +3,7 @@ import { forwardRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 import { readJSON, writeJSON } from "@/lib/preferences"
-import type { Repository } from "../domain"
+import { displayName, type Repository } from "../domain"
 
 const HISTORY_LIMIT = 50
 
@@ -47,8 +47,8 @@ export const CommandInput = forwardRef<HTMLInputElement, { repo: Repository; onR
             value={value}
             spellCheck={false}
             autoComplete="off"
-            aria-label={f(t.scripts.customPlaceholder, { name: repo.name })}
-            placeholder={f(t.scripts.customPlaceholder, { name: repo.name })}
+            aria-label={f(t.scripts.customPlaceholder, { name: displayName(repo) })}
+            placeholder={f(t.scripts.customPlaceholder, { name: displayName(repo) })}
             onChange={(event) => {
               setValue(event.target.value)
               setCursor(-1)

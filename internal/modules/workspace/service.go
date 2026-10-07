@@ -415,21 +415,71 @@ func (s *Service) Group(id string) (domain.Group, bool) {
 	return g, true
 }
 
+// AssignRepository moves a repository to the end of the given group.
 func (s *Service) AssignRepository(id, groupID string) error {
+	return s.MoveRepository(id, groupID, -1)
+}
+
+// MoveRepository places a repository in the given group at index, counted
+// within the group's members excluding the moved repository. A negative or
+// out-of-range index appends. Moving within the same group reorders it.
+func (s *Service) MoveRepository(id, groupID string, index int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.repoIndex(id)
 	if r < 0 {
 		return fmt.Errorf("repository %s: %w", id, ErrNotFound)
 	}
-	if s.groupIndex(groupID) < 0 {
+	target := s.groupIndex(groupID)
+	if target < 0 {
 		return fmt.Errorf("group %s: %w", groupID, ErrNotFound)
 	}
 	for g := range s.state.Groups {
 		s.state.Groups[g].RepositoryIDs = removeString(s.state.Groups[g].RepositoryIDs, id)
 	}
+	members := s.state.Groups[target].RepositoryIDs
+	if index < 0 || index > len(members) {
+		index = len(members)
+	}
+	members = append(members[:index], append([]string{id}, members[index:]...)...)
+	s.state.Groups[target].RepositoryIDs = members
 	s.state.Repositories[r].GroupID = groupID
 	normalize(&s.state)
+	return nil
+}
+
+// MaxAliasLength bounds repository aliases.
+const MaxAliasLength = 200
+
+// RenameRepository sets a repository's alias (display name). A blank alias
+// clears it, so the discovered name shows again.
+func (s *Service) RenameRepository(id, alias string) error {
+	alias = strings.TrimSpace(alias)
+	if len(alias) > MaxAliasLength {
+		return fmt.Errorf("alias is longer than %d characters", MaxAliasLength)
+	}
+	if strings.ContainsAny(alias, "\r\n\x00") {
+		return fmt.Errorf("alias contains line breaks or NUL bytes")
+	}
+	_, err := s.MutateRepository(id, func(repo *domain.Repository) { repo.Alias = alias })
+	return err
+}
+
+// MoveGroup places a group at index in the sidebar order, counted among the
+// other groups. A negative or out-of-range index moves it to the end.
+func (s *Service) MoveGroup(id string, index int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	from := s.groupIndex(id)
+	if from < 0 {
+		return fmt.Errorf("group %s: %w", id, ErrNotFound)
+	}
+	group := s.state.Groups[from]
+	rest := append(append([]domain.Group{}, s.state.Groups[:from]...), s.state.Groups[from+1:]...)
+	if index < 0 || index > len(rest) {
+		index = len(rest)
+	}
+	s.state.Groups = append(rest[:index], append([]domain.Group{group}, rest[index:]...)...)
 	return nil
 }
 

@@ -28,8 +28,8 @@ Each feature module exports an `AppModule` (`lib/module.ts`): id, rail icon, lab
 ## Rendering strategy
 
 - Process state lives in an external store (`modules/repository-manager/store/processStore.ts`) outside React. Mutations are cheap; subscribers are notified at most once per animation frame via `useSyncExternalStore`.
-- Output is indexed per run (5k lines), per repository and globally (10k lines each), trimmed in chunks.
-- The console virtualizes fixed-height rows, follows the tail unless the user scrolls up, and parses ANSI lazily per line.
+- Output lives in fixed-capacity ring buffers, globally and per repository, sized by the scrollback setting (`state/consoleLimit.ts`, default 2k lines); a run's view is filtered from its repository's buffer. Only the newest 200 finished runs are remembered. Memory is constant over long sessions (ADR-0016).
+- The console virtualizes fixed-height rows with `@tanstack/react-virtual`, follows the tail unless the user scrolls up (compensating for evicted lines), and parses ANSI lazily into a `WeakMap` cache.
 - Use `useMemo`/`useCallback` where profiling shows it matters; do not pre-optimize every component.
 
 ## Keyboard

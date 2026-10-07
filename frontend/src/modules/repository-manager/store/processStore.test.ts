@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { ProcessStore, RUN_LINE_LIMIT } from "./processStore"
+import { ProcessStore, RETAIN_FINISHED_RUNS, type LineView } from "./processStore"
 import type { ProcessOutput, Run } from "../domain"
 
 const immediate = (callback: () => void) => callback()
+const toArray = (view: LineView) => Array.from({ length: view.length }, (_, i) => view.at(i)!)
 
 const run = (patch: Partial<Run> = {}): Run => ({
   id: "r1", repositoryId: "repo", command: "npm run dev", label: "dev", status: "running", pid: 10, exitCode: -1,
@@ -49,13 +50,40 @@ describe("ProcessStore", () => {
     expect(store.lines({})).toHaveLength(2)
   })
 
-  it("bounds per-run history", () => {
+  it("keeps memory constant: every view is capped at the scrollback limit", () => {
+    const store = new ProcessStore(immediate, 1_000)
+    store.upsertRun(run())
+    for (let batch = 0; batch < 50; batch++) {
+      store.applyOutput(Array.from({ length: 500 }, (_, i) => line(batch * 500 + i + 1)))
+    }
+    for (const view of [store.lines({}), store.lines({ repositoryId: "repo" }), store.lines({ runId: "r1" })]) {
+      expect(view.length).toBe(1_000)
+      expect(view.at(view.length - 1)!.seq).toBe(25_000)
+      expect(view.at(0)!.seq).toBe(24_001)
+    }
+    expect(store.lines({}).evicted).toBe(24_000)
+  })
+
+  it("resizes the scrollback, keeping the newest lines", () => {
+    const store = new ProcessStore(immediate, 5_000)
+    store.applyOutput(Array.from({ length: 3_000 }, (_, i) => line(i + 1)))
+    store.setLimit(2_000)
+    const view = store.lines({ repositoryId: "repo" })
+    expect([view.length, view.at(0)!.seq]).toEqual([2_000, 1_001])
+    expect(store.getLimit()).toBe(2_000)
+  })
+
+  it("remembers only the newest finished runs", () => {
     const store = new ProcessStore(immediate)
-    const batch = Array.from({ length: RUN_LINE_LIMIT * 2 }, (_, i) => line(i + 1))
-    store.applyOutput(batch)
-    const lines = store.lines({ runId: "r1" })
-    expect(lines.length).toBeLessThanOrEqual(RUN_LINE_LIMIT * 1.1)
-    expect(lines[lines.length - 1].seq).toBe(RUN_LINE_LIMIT * 2)
+    for (let i = 0; i < RETAIN_FINISHED_RUNS + 50; i++) {
+      const startedAt = new Date(Date.UTC(2026, 9, 6, 10, 0, i)).toISOString()
+      store.upsertRun(run({ id: `run-${i}`, status: "exited", startedAt }))
+    }
+    store.upsertRun(run({ id: "live", startedAt: "2026-10-06T09:00:00Z" }))
+    const kept = store.runsFor("repo")
+    expect(kept).toHaveLength(RETAIN_FINISHED_RUNS + 1)
+    expect(kept.some((r) => r.id === "run-0")).toBe(false)
+    expect(kept.some((r) => r.id === "live")).toBe(true)
   })
 
   it("coalesces notifications until the scheduled frame", () => {
@@ -79,7 +107,7 @@ describe("ProcessStore", () => {
     store.applyOutput([line(1), line(2, { runId: "r2" })])
     store.clearFinished("repo")
     expect(store.runsFor("repo").map((r) => r.id)).toEqual(["r1"])
-    expect(store.lines({ repositoryId: "repo" }).map((l) => l.runId)).toEqual(["r1"])
+    expect(toArray(store.lines({ repositoryId: "repo" })).map((l) => l.runId)).toEqual(["r1"])
   })
 
   it("keeps the newest group run and ignores stale running updates", () => {

@@ -31,7 +31,9 @@ Build a polished, native, local-first desktop command center for many local Node
 - Supported package-manager detection is `packageManager`, then lockfile hints, then npm.
 - Scripts are displayed exactly as they appear in `package.json`.
 - A repository may have zero scripts.
-- Duplicate repository paths should resolve to the existing repository record instead of creating another record.
+- The same folder may be registered several times, and parent/child folders of a registered one may be added; extra records of one folder get a numbered alias (ADR-0015).
+- A folder without `package.json` is a valid "plain folder" (no scripts); a record that had a `package.json` and lost it reports a problem.
+- Show repositories by `displayName` (alias, else discovered name); never use `name` alone for display.
 
 ## Environment rules
 

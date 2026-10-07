@@ -5,7 +5,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { useNotifications } from "@/state/notifications"
 import { formatTime } from "@/lib/utils"
-import type { Repository } from "../domain"
+import { displayName, type Repository } from "../domain"
 
 export function RepoHeader({ repo, running, onRefresh, onSequence, onEnvironment, onStopAll, onRelocate }: {
   repo: Repository
@@ -28,8 +28,9 @@ export function RepoHeader({ repo, running, onRefresh, onSequence, onEnvironment
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="truncate text-xl font-semibold tracking-tight">{repo.name}</h1>
-            <Badge>{repo.packageManager}</Badge>
+            <h1 className="truncate text-xl font-semibold tracking-tight">{displayName(repo)}</h1>
+            {repo.alias && repo.alias !== repo.name && <span className="shrink-0 truncate text-sm text-muted-foreground" title={t.header.discoveredName}>{repo.name}</span>}
+            <Badge>{repo.packageManager || t.header.plainFolder}</Badge>
           </div>
           <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <FolderOpen className="size-3.5 shrink-0" />

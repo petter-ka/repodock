@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -184,6 +185,86 @@ func TestSnapshotIsIsolated(t *testing.T) {
 	repo, _ := s.Repository("r1")
 	if repo.Scripts[0].Name != "dev" {
 		t.Fatal("snapshot mutation leaked into state")
+	}
+}
+
+func TestMoveRepositoryPlacesAtIndex(t *testing.T) {
+	s := newTemp(t)
+	_, _ = s.Load()
+	first := s.Snapshot().Groups[0]
+	second, _ := s.CreateGroup("Second")
+	for _, id := range []string{"a", "b", "c"} {
+		s.UpsertRepository(domain.Repository{ID: id, Path: id, GroupID: first.ID})
+	}
+	s.UpsertRepository(domain.Repository{ID: "x", Path: "x", GroupID: second.ID})
+
+	members := func(id string) []string { g, _ := s.Group(id); return g.RepositoryIDs }
+	steps := []struct {
+		id, group string
+		index     int
+		first     []string
+		second    []string
+	}{
+		{"c", first.ID, 0, []string{"c", "a", "b"}, []string{"x"}},   // reorder up
+		{"c", first.ID, 2, []string{"a", "b", "c"}, []string{"x"}},   // reorder down
+		{"a", second.ID, 0, []string{"b", "c"}, []string{"a", "x"}},  // cross-group, front
+		{"b", second.ID, 99, []string{"c"}, []string{"a", "x", "b"}}, // out of range appends
+		{"x", first.ID, -1, []string{"c", "x"}, []string{"a", "b"}},  // negative appends
+	}
+	for _, step := range steps {
+		if err := s.MoveRepository(step.id, step.group, step.index); err != nil {
+			t.Fatal(err)
+		}
+		if got := members(first.ID); !slices.Equal(got, step.first) {
+			t.Fatalf("move %s: first = %v, want %v", step.id, got, step.first)
+		}
+		if got := members(second.ID); !slices.Equal(got, step.second) {
+			t.Fatalf("move %s: second = %v, want %v", step.id, got, step.second)
+		}
+		if repo, _ := s.Repository(step.id); repo.GroupID != step.group {
+			t.Fatalf("move %s: group = %q", step.id, repo.GroupID)
+		}
+	}
+	if err := s.MoveRepository("missing", first.ID, 0); err == nil {
+		t.Fatal("moving an unknown repository must fail")
+	}
+	if err := s.MoveRepository("a", "nope", 0); err == nil {
+		t.Fatal("moving to an unknown group must fail")
+	}
+}
+
+func TestMoveGroupReorders(t *testing.T) {
+	s := newTemp(t)
+	_, _ = s.Load()
+	a := s.Snapshot().Groups[0].ID
+	b, _ := s.CreateGroup("B")
+	c, _ := s.CreateGroup("C")
+	order := func() []string {
+		ids := []string{}
+		for _, g := range s.Snapshot().Groups {
+			ids = append(ids, g.ID)
+		}
+		return ids
+	}
+	for _, step := range []struct {
+		id    string
+		index int
+		want  []string
+	}{
+		{c.ID, 0, []string{c.ID, a, b.ID}},
+		{c.ID, 2, []string{a, b.ID, c.ID}},
+		{a, -1, []string{b.ID, c.ID, a}},
+		{a, 1, []string{b.ID, a, c.ID}},
+	} {
+		if err := s.MoveGroup(step.id, step.index); err != nil {
+			t.Fatal(err)
+		}
+		if got := order(); !slices.Equal(got, step.want) {
+			t.Fatalf("move %s to %d: %v, want %v", step.id, step.index, got, step.want)
+		}
+	}
+	if err := s.MoveGroup("nope", 0); err == nil {
+		t.Fatal("moving an unknown group must fail")
 	}
 }
 

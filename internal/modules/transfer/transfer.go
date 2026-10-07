@@ -21,9 +21,13 @@ const (
 	// Format identifies RepoDock export documents.
 	Format = "repodock.workspace-export"
 	// Version is the current export document version. Version 2 added
-	// globalCommands and the step globalCommand reference; version 1
-	// documents are still read.
-	Version = 2
+	// globalCommands and the step globalCommand reference; version 3 added
+	// the repository alias and the plain-folder flag. Older documents are
+	// still read.
+	Version = 3
+	// UnknownPackageManager is the placeholder of an imported repository
+	// that expects a package.json, until its first refresh.
+	UnknownPackageManager = "npm"
 	// MaxDocumentSize bounds import files.
 	MaxDocumentSize = 4 << 20
 	maxNameLength   = 200
@@ -51,6 +55,12 @@ type DocumentGroup struct {
 
 type DocumentRepository struct {
 	Name string `json:"name"`
+	// Alias is the user-chosen display name (version 3+).
+	Alias string `json:"alias,omitempty"`
+	// PlainFolder marks a folder registered without package.json (version
+	// 3+). Without it, an imported folder that has no package.json is
+	// reported as a problem, as in versions 1–2.
+	PlainFolder bool `json:"plainFolder,omitempty"`
 	// Path uses forward slashes; a leading "~/" means the user's home folder.
 	Path            string               `json:"path"`
 	CommandSequence []domain.CommandStep `json:"commandSequence"`
@@ -83,7 +93,7 @@ func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (
 			if repo.CommandSequence == nil {
 				steps = nil
 			}
-			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Path: portablePath(repo.Path, home), CommandSequence: steps})
+			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Alias: repo.Alias, PlainFolder: repo.PackageManager == "", Path: portablePath(repo.Path, home), CommandSequence: steps})
 		}
 		doc.Groups = append(doc.Groups, out)
 	}
@@ -172,6 +182,14 @@ func Parse(data []byte) (Document, error) {
 			if strings.TrimSpace(repo.Path) == "" {
 				return doc, fmt.Errorf("%s: path is empty", where)
 			}
+			if (repo.Alias != "" || repo.PlainFolder) && doc.Version < 3 {
+				return doc, fmt.Errorf("%s: aliases and plain folders require export version 3", where)
+			}
+			if repo.Alias != "" {
+				if err := validName(repo.Alias); err != nil || strings.ContainsAny(repo.Alias, "\r\n\x00") {
+					return doc, fmt.Errorf("%s: invalid alias", where)
+				}
+			}
 			if len(repo.CommandSequence) > maxSteps {
 				return doc, fmt.Errorf("%s: more than %d steps", where, maxSteps)
 			}
@@ -221,7 +239,6 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 			preview.ShellCommands++
 		}
 	}
-	seen := []string{}
 	for _, group := range doc.Groups {
 		g := domain.ImportGroupPreview{Name: strings.TrimSpace(group.Name), Repositories: []domain.ImportRepositoryPreview{}}
 		g.Exists = findGroup(current, g.Name) != nil
@@ -232,10 +249,11 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 			path := LocalPath(repo.Path, env.Home)
 			// Preview steps keep document global command IDs, which match
 			// preview.GlobalCommands[].ID.
-			r := domain.ImportRepositoryPreview{Name: repo.Name, Path: path, Steps: sanitizeSteps(repo.CommandSequence, true, nil)}
+			r := domain.ImportRepositoryPreview{Name: displayName(repo), Path: path, Steps: sanitizeSteps(repo.CommandSequence, true, nil)}
+			// Several records of one folder are allowed (ADR-0015), so a
+			// path repeated inside the file is imported once per entry; only
+			// paths already in the workspace are skipped.
 			switch {
-			case containsPath(seen, path, env.SamePath):
-				r.Status = domain.ImportDuplicate
 			case findRepoByPath(current, path, env.SamePath) != nil:
 				r.Status = domain.ImportExisting
 				preview.Existing++
@@ -254,7 +272,6 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 					}
 				}
 			}
-			seen = append(seen, path)
 			g.Repositories = append(g.Repositories, r)
 		}
 		preview.Groups = append(preview.Groups, g)
@@ -288,31 +305,54 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 		result.GlobalCommandsAdded++
 	}
 
-	for _, group := range doc.Groups {
+	// New groups keep the document's order relative to groups that already
+	// exist: each is inserted right after the previous document group, or,
+	// before any, ahead of the first document group already present.
+	anchor := -1
+	for di, group := range doc.Groups {
 		name := strings.TrimSpace(group.Name)
 		target := findGroup(ws, name)
-		if target == nil {
+		if target != nil {
+			anchor = groupPosition(ws, name) + 1
+		} else {
 			mode := group.RunMode
 			if !mode.Valid() {
 				mode = domain.GroupRunSequential
 			}
-			ws.Groups = append(ws.Groups, domain.Group{ID: uuid.NewString(), Name: name, RunMode: mode, Collapsed: group.Collapsed, RepositoryIDs: []string{}})
-			target = &ws.Groups[len(ws.Groups)-1]
+			if anchor < 0 {
+				anchor = len(ws.Groups)
+				for _, later := range doc.Groups[di+1:] {
+					if at := groupPosition(ws, strings.TrimSpace(later.Name)); at >= 0 {
+						anchor = at
+						break
+					}
+				}
+			}
+			created := domain.Group{ID: uuid.NewString(), Name: name, RunMode: mode, Collapsed: group.Collapsed, RepositoryIDs: []string{}}
+			ws.Groups = append(ws.Groups[:anchor], append([]domain.Group{created}, ws.Groups[anchor:]...)...)
+			target = &ws.Groups[anchor]
+			anchor++
 			result.GroupsCreated++
 		}
 		for _, repo := range group.Repositories {
 			path := overridePath(LocalPath(repo.Path, env.Home), opts.PathOverrides, env.SamePath)
-			if findRepoByPath(ws, path, env.SamePath) != nil {
+			if findRepoByPath(current, path, env.SamePath) != nil {
 				result.RepositoriesSkipped++
 				continue
 			}
 			record := domain.Repository{
-				ID: uuid.NewString(), Name: strings.TrimSpace(repo.Name), Path: path, GroupID: target.ID,
+				ID: uuid.NewString(), Name: strings.TrimSpace(repo.Name), Alias: strings.TrimSpace(repo.Alias), Path: path, GroupID: target.ID,
 				Scripts: []domain.Script{}, EnvFiles: []string{},
 				CommandSequence: sanitizeSteps(repo.CommandSequence, opts.KeepStepsEnabled, globalIDs),
 			}
 			if record.Name == "" {
 				record.Name = filepath.Base(path)
+			}
+			// The first refresh fills in the real package manager. Until then
+			// a placeholder marks "expects package.json", so a folder that
+			// lost it reports a problem instead of becoming a plain folder.
+			if !repo.PlainFolder {
+				record.PackageManager = UnknownPackageManager
 			}
 			ws.Repositories = append(ws.Repositories, record)
 			target.RepositoryIDs = append(target.RepositoryIDs, record.ID)
@@ -442,6 +482,15 @@ func LocalPath(path, home string) string {
 	return filepath.Clean(filepath.FromSlash(path))
 }
 
+func groupPosition(ws domain.Workspace, name string) int {
+	for i := range ws.Groups {
+		if strings.EqualFold(strings.TrimSpace(ws.Groups[i].Name), name) {
+			return i
+		}
+	}
+	return -1
+}
+
 func findGroup(ws domain.Workspace, name string) *domain.Group {
 	for i := range ws.Groups {
 		if strings.EqualFold(strings.TrimSpace(ws.Groups[i].Name), name) {
@@ -460,11 +509,9 @@ func findRepoByPath(ws domain.Workspace, path string, same func(a, b string) boo
 	return nil
 }
 
-func containsPath(paths []string, path string, same func(a, b string) bool) bool {
-	for _, p := range paths {
-		if same(p, path) {
-			return true
-		}
+func displayName(repo DocumentRepository) string {
+	if alias := strings.TrimSpace(repo.Alias); alias != "" {
+		return alias
 	}
-	return false
+	return repo.Name
 }

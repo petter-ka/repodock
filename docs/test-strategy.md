@@ -34,4 +34,4 @@ At least one smoke build/run is required on Windows, macOS and Linux for each re
 
 ## Performance budget
 
-A single log stream should not cause a full app re-render for every byte. Batched state updates and eventual virtualization are preferred for large logs.
+A single log stream should not cause a full app re-render for every byte. Output is batched, the console is virtualized (TanStack Virtual) and scrollback is a fixed-size ring buffer; tests assert the buffers never exceed the configured limit (ADR-0016).

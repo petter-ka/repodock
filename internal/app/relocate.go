@@ -1,15 +1,18 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/example/repodock/internal/domain"
+	repomod "github.com/example/repodock/internal/modules/repository"
 )
 
 // CheckRepositoryFolder reports whether path can be used as a repository
-// folder: it must exist and contain a readable package.json. It never
-// changes anything and never returns an error; problems are in the result.
+// folder: it must exist, and a package.json in it, if any, must be
+// readable. It never changes anything and never returns an error; problems
+// are in the result.
 func (a *App) CheckRepositoryFolder(path string) domain.FolderCheck {
 	check := domain.FolderCheck{Path: strings.TrimSpace(path)}
 	abs, err := a.repo.ResolvePath(path)
@@ -18,13 +21,13 @@ func (a *App) CheckRepositoryFolder(path string) domain.FolderCheck {
 		return check
 	}
 	check.Path, check.Exists = abs, true
-	if meta, err := a.repo.Inspect(abs); err != nil {
+	if meta, err := a.repo.Inspect(abs); err != nil && !errors.Is(err, repomod.ErrNoPackageJSON) {
 		check.Problem = err.Error()
 	} else {
 		check.Valid, check.Name = true, meta.Name
 	}
 	if existing, ok := a.workspace.RepositoryByPath(abs); ok {
-		check.RegisteredID, check.RegisteredName = existing.ID, existing.Name
+		check.RegisteredID, check.RegisteredName = existing.ID, existing.DisplayName()
 	}
 	return check
 }
@@ -39,9 +42,6 @@ func (a *App) RelocateRepository(id string, path string) (domain.Repository, err
 	check := a.CheckRepositoryFolder(path)
 	if !check.Valid {
 		return domain.Repository{}, fmt.Errorf("cannot use %s: %s", check.Path, check.Problem)
-	}
-	if check.RegisteredID != "" && check.RegisteredID != id {
-		return domain.Repository{}, fmt.Errorf("%s is already registered as %q", check.Path, check.RegisteredName)
 	}
 	for _, run := range a.process.ActiveRuns() {
 		if run.RepositoryID == id {

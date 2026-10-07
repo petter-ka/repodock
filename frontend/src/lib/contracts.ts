@@ -19,8 +19,12 @@ export type CommandStep = {
 
 export type Repository = {
   id: string
+  /** from package.json, or the folder name for a plain folder */
   name: string
+  /** user-chosen display name; "" when none (ADR-0015) */
+  alias: string
   path: string
+  /** "" for a plain folder without package.json */
   packageManager: string
   scripts: Script[]
   /** null when the record never had a sequence */
@@ -167,6 +171,9 @@ export type AppBinding = {
   DeleteGroup(id: string): Promise<void>
   SetGroupCollapsed(id: string, collapsed: boolean): Promise<void>
   AssignRepository(id: string, groupID: string): Promise<void>
+  MoveRepository(id: string, groupID: string, index: number): Promise<void>
+  RenameRepository(id: string, alias: string): Promise<void>
+  MoveGroup(id: string, index: number): Promise<void>
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
   RunGroup(groupID: string): Promise<GroupRun>
   StopGroup(groupID: string): Promise<void>
@@ -214,4 +221,9 @@ export function isActive(status: RunStatus) {
 /** Go encodes zero time.Time as 0001-01-01T00:00:00Z. */
 export function isZeroTime(value: string | undefined) {
   return !value || value.startsWith("0001-01-01")
+}
+
+/** The name to show for a repository: its alias, else its discovered name. */
+export function displayName(repo: Pick<Repository, "name" | "alias">) {
+  return repo.alias || repo.name
 }

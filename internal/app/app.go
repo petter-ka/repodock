@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,32 +127,23 @@ func (a *App) BrowseRepository() (string, error) {
 	})
 }
 
-// AddRepository registers a folder containing a valid package.json. Adding a
-// path that is already registered returns the existing record (refreshed).
+// AddRepository registers a folder as a new record. The folder may have a
+// package.json or none at all (a plain folder with no scripts). The same
+// folder, or a parent/child of a registered one, may be added any number of
+// times; each extra record of an already registered folder gets a numbered
+// alias so the entries can be told apart (ADR-0015).
 func (a *App) AddRepository(path string, groupID string) (domain.Repository, error) {
 	abs, err := a.repo.ResolvePath(path)
 	if err != nil {
 		return domain.Repository{}, err
 	}
-	if existing, ok := a.workspace.RepositoryByPath(abs); ok {
-		if groupID != "" && groupID != existing.GroupID {
-			if err := a.workspace.AssignRepository(existing.ID, groupID); err != nil {
-				return domain.Repository{}, err
-			}
-		}
-		repo, err := a.refresh(existing.ID)
-		if err != nil {
-			return domain.Repository{}, err
-		}
-		return repo, a.persist()
-	}
-
 	meta, err := a.repo.Inspect(abs)
-	if err != nil {
+	if err != nil && !errors.Is(err, repomod.ErrNoPackageJSON) {
 		return domain.Repository{}, err
 	}
 	repo := domain.Repository{ID: uuid.NewString(), GroupID: groupID}
 	applyMetadata(&repo, meta)
+	repo.Alias = a.duplicateAlias(repo)
 	repo.EnvFiles = a.env.Names(repo.Path)
 	repo.CommandSequence = repomod.DefaultSequence(repo.Scripts)
 	repo = a.workspace.UpsertRepository(repo)
@@ -222,8 +214,36 @@ func (a *App) SetGroupRunMode(id string, mode string) error {
 	return a.persist()
 }
 
+// RenameRepository sets a repository's alias (display name); a blank alias
+// restores the discovered name.
+func (a *App) RenameRepository(id string, alias string) error {
+	if err := a.workspace.RenameRepository(id, alias); err != nil {
+		return err
+	}
+	return a.persist()
+}
+
+// MoveGroup places a group at index in the sidebar order (drag and drop).
+// The index excludes the moved group itself; a negative index moves it last.
+func (a *App) MoveGroup(id string, index int) error {
+	if err := a.workspace.MoveGroup(id, index); err != nil {
+		return err
+	}
+	return a.persist()
+}
+
 func (a *App) AssignRepository(id string, groupID string) error {
 	if err := a.workspace.AssignRepository(id, groupID); err != nil {
+		return err
+	}
+	return a.persist()
+}
+
+// MoveRepository places a repository at index within a group (drag and
+// drop in the sidebar). The index excludes the moved repository itself; a
+// negative index appends.
+func (a *App) MoveRepository(id string, groupID string, index int) error {
+	if err := a.workspace.MoveRepository(id, groupID, index); err != nil {
 		return err
 	}
 	return a.persist()
@@ -402,6 +422,12 @@ func (a *App) refresh(id string) (domain.Repository, error) {
 		return domain.Repository{}, err
 	}
 	meta, inspectErr := a.repo.Inspect(current.Path)
+	// A plain folder (registered without package.json) stays healthy while
+	// it has none. A record that had a package.json reports its loss as a
+	// problem instead of silently dropping its scripts.
+	if errors.Is(inspectErr, repomod.ErrNoPackageJSON) && current.PackageManager == "" {
+		inspectErr = nil
+	}
 	envFiles := a.env.Names(current.Path)
 	return a.workspace.MutateRepository(id, func(repo *domain.Repository) {
 		if inspectErr != nil {
@@ -420,6 +446,29 @@ func (a *App) refreshAll() {
 	for _, repo := range a.workspace.Snapshot().Repositories {
 		if _, err := a.refresh(repo.ID); err != nil {
 			slog.Warn("refresh repository", "repositoryId", repo.ID, "error", err)
+		}
+	}
+}
+
+// duplicateAlias returns "<name> (n)" when repo's folder is already
+// registered, so records of the same folder are distinguishable; otherwise
+// "".
+func (a *App) duplicateAlias(repo domain.Repository) string {
+	taken := map[string]bool{}
+	shared := false
+	for _, other := range a.workspace.Snapshot().Repositories {
+		taken[strings.ToLower(other.DisplayName())] = true
+		if workspacemod.SamePath(other.Path, repo.Path) {
+			shared = true
+		}
+	}
+	if !shared {
+		return ""
+	}
+	for n := 2; ; n++ {
+		alias := fmt.Sprintf("%s (%d)", repo.Name, n)
+		if !taken[strings.ToLower(alias)] {
+			return alias
 		}
 	}
 }
