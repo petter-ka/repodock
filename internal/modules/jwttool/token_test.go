@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ func keyPair(t *testing.T, bits int) (private, public string) {
 func settings(private, public string) domain.JWTSettings {
 	s := Defaults()
 	s.ID, s.Email = "42", "dev@example.com"
+	s.Issuer, s.Subject, s.Realm, s.Channel = "issuer-x", "subject-x", "realm-x", "channel-x"
 	s.Roles = []string{"admin", "viewer", "editor"}
 	s.SelectedRoles = []string{"editor", "admin"}
 	s.PrivateKey, s.PublicKey = private, public
@@ -53,7 +55,7 @@ func TestGenerateAndDecodeRS256(t *testing.T) {
 	if err := json.Unmarshal([]byte(token.Payload), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["userName"] != "dev@example.com" || payload["realm"] != "customer-service" || payload["iss"] != "bms" {
+	if payload["userName"] != "dev@example.com" || payload["realm"] != "realm-x" || payload["iss"] != "issuer-x" {
 		t.Fatalf("payload = %v", payload)
 	}
 	if roles := payload["resource_access"].(map[string]any)["roles"]; len(roles.([]any)) != 2 || roles.([]any)[0] != "admin" {
@@ -148,7 +150,7 @@ func TestDecodeRejectsMalformedTokens(t *testing.T) {
 func TestSettingsPersistence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "jwt-tool.json")
 	svc := New(path)
-	if s, err := svc.Settings(); err != nil || s.Issuer != "bms" {
+	if s, err := svc.Settings(); err != nil || s.Issuer != "" || s.Realm != "" || s.DeviceID == "" {
 		t.Fatalf("defaults: %+v %v", s, err)
 	}
 	in := settings("key", "")
@@ -166,7 +168,8 @@ func TestSettingsPersistence(t *testing.T) {
 		t.Fatalf("loaded = %+v %v", loaded, err)
 	}
 	info, _ := os.Stat(path)
-	if info.Mode().Perm() != 0o600 {
+	// Windows has no POSIX permission bits.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("settings must be private, mode = %v", info.Mode().Perm())
 	}
 }

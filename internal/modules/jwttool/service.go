@@ -17,15 +17,12 @@ import (
 	"github.com/example/repodock/internal/domain"
 )
 
-// Defaults mirror the team's previous generator script.
+// Defaults leave every claim empty except the device ID, a typical browser
+// user agent.
 func Defaults() domain.JWTSettings {
 	return domain.JWTSettings{
 		Algorithm:     AlgRS256,
 		ExpiresInDays: 7,
-		Issuer:        "bms",
-		Subject:       "bms",
-		Realm:         "customer-service",
-		Channel:       "bms",
 		DeviceID:      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
 		Roles:         []string{},
 		SelectedRoles: []string{},

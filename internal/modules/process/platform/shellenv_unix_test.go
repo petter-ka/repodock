@@ -43,9 +43,11 @@ func TestShellPathTimesOut(t *testing.T) {
 	}
 }
 
-// Reproduces the macOS bug: npm is only on PATH via ~/.zshrc (as nvm sets
-// it up), so `zsh -l -c npm` fails with "command not found" unless the
-// child environment carries the interactive shell's PATH.
+// Reproduces the macOS bug: a tool (like nvm's npm) is only on PATH via
+// ~/.zshrc, so `zsh -l -c <tool>` fails with "command not found" unless the
+// child environment carries the interactive shell's PATH. The tool has a
+// unique name: a real npm on the machine (CI runners have one) would
+// otherwise be found and make the test meaningless.
 func TestZshrcPathReachesChildProcesses(t *testing.T) {
 	zsh, err := exec.LookPath("zsh")
 	if err != nil {
@@ -56,29 +58,30 @@ func TestZshrcPathReachesChildProcesses(t *testing.T) {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeScript(t, filepath.Join(bin, "npm"), "#!/bin/sh\necho npm-from-zshrc\n")
+	const tool = "repodock-zshrc-only-tool"
+	writeScript(t, filepath.Join(bin, tool), "#!/bin/sh\necho from-zshrc\n")
 	writeScript(t, filepath.Join(home, ".zshrc"), "export PATH=\""+bin+":$PATH\"\necho 'zshrc banner'\n")
 
 	t.Setenv("HOME", home)
 	t.Setenv("ZDOTDIR", home)
 	t.Setenv("PATH", "/usr/bin:/bin")
 
-	// Without the resolved PATH the login shell alone cannot find npm.
-	plain := exec.Command(zsh, "-l", "-c", "npm")
+	// Without the resolved PATH the login shell alone cannot find the tool.
+	plain := exec.Command(zsh, "-l", "-c", tool)
 	plain.Env = os.Environ()
-	if out, err := plain.CombinedOutput(); err == nil {
-		t.Fatalf("precondition failed: npm was found without .zshrc: %s", out)
+	if out, err := plain.CombinedOutput(); err == nil || strings.Contains(string(out), "from-zshrc") {
+		t.Fatalf("precondition failed: the tool was found without .zshrc: %s", out)
 	}
 
 	path, err := shellPath(zsh, 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(zsh, "-l", "-c", "npm")
+	cmd := exec.Command(zsh, "-l", "-c", tool)
 	cmd.Env = WithPath(os.Environ(), path, nil)
 	out, err := cmd.CombinedOutput()
-	if err != nil || strings.TrimSpace(string(out)) != "npm-from-zshrc" {
-		t.Fatalf("npm via resolved PATH: %q, %v", out, err)
+	if err != nil || strings.TrimSpace(string(out)) != "from-zshrc" {
+		t.Fatalf("tool via resolved PATH: %q, %v", out, err)
 	}
 }
 

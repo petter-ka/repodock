@@ -59,9 +59,9 @@ export function createMockBackend(): Backend {
   const groupRuns = new Map<string, GroupRun & { cancelled?: boolean }>()
   const importFiles = new Map<string, string>()
   let jwtSettings: JwtSettings = {
-    algorithm: "RS256", id: "", email: "", expiresInDays: 7, issuer: "bms", subject: "bms", realm: "customer-service", channel: "bms",
+    algorithm: "RS256", id: "", email: "", expiresInDays: 7, issuer: "", subject: "", realm: "", channel: "",
     deviceId: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
-    roles: ["admin", "customer-service:read", "customer-service:write"], selectedRoles: ["admin"], extraClaims: "", privateKey: "", publicKey: "", secret: "",
+    roles: [], selectedRoles: [], extraClaims: "", privateKey: "", publicKey: "", secret: "",
   }
   const killedHost = new Set<number>()
   // A few fake machine processes plus RepoDock's own running runs.

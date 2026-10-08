@@ -25,8 +25,11 @@ func startSleeper(t *testing.T, ignoreTerm bool) *exec.Cmd {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-	go func() { _ = cmd.Wait() }() // reap, so the PID disappears
+	// Reap in the background so the PID disappears once it exits. Wait must
+	// be called exactly once, so cleanup waits for this goroutine instead.
+	reaped := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(reaped) }()
+	t.Cleanup(func() { _ = cmd.Process.Kill(); <-reaped })
 	return cmd
 }
 
