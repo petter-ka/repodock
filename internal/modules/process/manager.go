@@ -63,6 +63,9 @@ type Options struct {
 type GroupGuard interface {
 	Track(pgid int, command string)
 	Untrack(pgid int)
+	// Tag adds marker variables identifying the run to a child environment,
+	// so descendants that leave the group can still be found (ADR-0021).
+	Tag(env []string, runID, repositoryID string) []string
 }
 
 func DefaultOptions() Options {
@@ -162,6 +165,9 @@ func (m *Manager) Start(spec Spec) (domain.Run, error) {
 
 	cmd := platform.ShellCommand(text, spec.Workdir)
 	cmd.Env = childEnv()
+	if m.opts.Guard != nil {
+		cmd.Env = m.opts.Guard.Tag(cmd.Env, t.run.ID, spec.RepositoryID)
+	}
 	cmd.WaitDelay = 2 * time.Second
 	stdout := newLineWriter(func(line string, partial bool) { m.appendOutput(t, "stdout", line, partial) }, m.opts.PromptIdle)
 	stderr := newLineWriter(func(line string, partial bool) { m.appendOutput(t, "stderr", line, partial) }, m.opts.PromptIdle)

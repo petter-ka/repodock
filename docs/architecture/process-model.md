@@ -90,3 +90,5 @@ One shared sampler ticks at about 1 Hz for all runs, builds a single parent map 
 ## Nothing outlives RepoDock (ADR-0019)
 
 Every process group is tracked from start until its last member exits (not just the shell). Quitting SIGTERMs all tracked groups and SIGKILLs survivors synchronously after 5 s; SIGINT/SIGTERM/SIGHUP run the same shutdown. A watchdog process (the RepoDock binary with `--repodock-process-watchdog`) receives the tracked groups over a pipe and kills them if RepoDock dies without saying goodbye (crash, Force Quit). `running-processes.json` lets the next launch kill same-boot leftovers if the watchdog died too. Windows relies on kill-on-close Job Objects.
+
+Group tracking cannot follow descendants that leave their group (`setsid`, daemons). Every child therefore carries `REPODOCK_SESSION`, `REPODOCK_OWNER`, `REPODOCK_RUN_ID` and `REPODOCK_REPOSITORY_ID` (ADR-0021). Quitting and the watchdog also kill every process marked with the session; at launch, processes marked by a session whose RepoDock is gone are listed in a dialog where the user can stop them.

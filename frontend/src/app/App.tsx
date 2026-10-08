@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider, useI18n } from "@/lib/i18n"
 import { readPreference, writePreference } from "@/lib/preferences"
 import { ThemeProvider } from "@/lib/theme"
+import { LeftoverProcessesDialog } from "@/modules/leftover-processes"
 import { miniApps, useMiniApps } from "@/state/miniApps"
 import { NotificationsProvider, useNotifications } from "@/state/notifications"
 import { miniAppList } from "./miniApps"
@@ -40,6 +41,7 @@ function Shell() {
       <AppRail modules={modules} active={active} onChange={select} miniApps={miniAppList} openMiniApps={openApps.open} onToggleMiniApp={miniApps.toggle} />
       <View />
       <MiniAppHost />
+      <LeftoverProcessesDialog />
       <Toaster />
     </div>
   )

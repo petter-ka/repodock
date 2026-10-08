@@ -43,3 +43,4 @@ Use the following template for new architectural decisions:
 | 0018 | Mini apps (floating tools) and the Kill process app | Accepted |
 | 0019 | No ghost processes after quit, signal or crash | Accepted |
 | 0020 | "JWT tool" mini app | Accepted |
+| 0021 | Marker environment variables and the leftover-process list | Accepted |

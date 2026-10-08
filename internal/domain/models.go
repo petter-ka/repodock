@@ -143,6 +143,24 @@ type KillResult struct {
 	RunID string `json:"runId"`
 }
 
+// LeftoverRun is a run started by an earlier RepoDock session that ended,
+// whose processes are still running (ADR-0021). They are found by the
+// marker environment variables RepoDock gives every child process.
+type LeftoverRun struct {
+	RunID        string `json:"runId"`
+	RepositoryID string `json:"repositoryId"`
+	// RepositoryName is the repository's display name, empty when it is no
+	// longer registered.
+	RepositoryName string `json:"repositoryName"`
+	// Command is the command line of the run's oldest surviving process.
+	Command   string `json:"command"`
+	StartedAt string `json:"startedAt"`
+	// PIDs lists the surviving processes, that root process first.
+	PIDs []int `json:"pids"`
+	// Ports are the TCP ports the processes listen on.
+	Ports []int `json:"ports"`
+}
+
 type RunStatus string
 
 const (

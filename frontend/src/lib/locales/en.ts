@@ -93,6 +93,12 @@ export const en = {
     runHint: "Started by RepoDock — its run will be stopped with the whole process tree.",
     killed: "PID {pid} terminated ({count} process(es))", killedForced: "PID {pid} did not exit in time and was force-killed ({count} process(es))", stoppedRun: "Stopping the RepoDock run of PID {pid}",
   },
+  leftover: {
+    title: "Processes left running", description: "These were started by an earlier RepoDock session that did not shut down cleanly, and are still running. Stop them to free their ports and files.",
+    unknownRepo: "Unregistered repository", processes: "{count} process(es)", started: "started {time}", port: ":{port}",
+    stop: "Stop", stopAll: "Stop all", keep: "Leave running",
+    stopped: "Stopped {count} leftover process(es)", nothingStopped: "Those processes had already exited.",
+  },
   jwt: {
     title: "JWT tool", encode: "Encode", decode: "Decode", mode: "Mode",
     claims: "Claims", id: "ID", email: "Email", expires: "Expires in (days)", algorithm: "Algorithm", issuer: "Issuer", subject: "Subject",

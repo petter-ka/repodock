@@ -30,6 +30,10 @@ Four layers on macOS/Linux (`internal/modules/process/guard`, process manager, a
 - Processes that deliberately leave their group (`setsid`, daemonizing) are out of reach, as before; they are not "ours" anymore by design.
 - Tests cover the watchdog killing groups when the pipe closes without goodbye, sparing them after goodbye, the sweep (including a recycled-PID entry and a different boot), and shutdown killing a SIGTERM-ignoring child of an exited shell.
 
+## Amendment (ADR-0021)
+
+Descendants that leave their group are found by marker environment variables and killed on quit and by the watchdog; survivors are listed at the next launch.
+
 ## Reconsider when
 
 - Linux-only: `PR_SET_CHILD_SUBREAPER` could replace parts of this; macOS has no equivalent.

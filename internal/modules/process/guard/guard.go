@@ -11,7 +11,10 @@
 //     force-quit (SIGKILL), which no in-process handler can catch;
 //   - a small record file lists live groups; on the next launch, groups
 //     from the same boot that still run the same processes are killed, in
-//     case the watchdog died too.
+//     case the watchdog died too;
+//   - marker environment variables on every child (marker.go, ADR-0021)
+//     find descendants that left their group, so quitting and the watchdog
+//     kill them too, and a later launch can list what still survived.
 package guard
 
 import (
@@ -29,6 +32,7 @@ import (
 	"time"
 
 	"github.com/example/repodock/internal/modules/process/platform"
+	"github.com/google/uuid"
 	"github.com/shirou/gopsutil/v4/host"
 	gops "github.com/shirou/gopsutil/v4/process"
 )
@@ -60,12 +64,15 @@ type Guard struct {
 	boot     uint64
 	entries  map[int]Entry
 	watchdog io.WriteCloser
+	// session and owner are this launch's marker values (marker.go).
+	session string
+	owner   string
 }
 
 // New returns a guard that keeps its record at path.
 func New(path string) *Guard {
 	boot, _ := host.BootTime()
-	return &Guard{path: path, boot: boot, entries: map[int]Entry{}}
+	return &Guard{path: path, boot: boot, entries: map[int]Entry{}, session: uuid.NewString(), owner: ownerOf(os.Getpid())}
 }
 
 // Track records a group RepoDock just started.
@@ -117,7 +124,7 @@ func (g *Guard) SweepPrevious() []Entry {
 }
 
 // StartWatchdog launches the watchdog process. Failure is logged, not
-// fatal: the other two layers still apply.
+// fatal: the other layers still apply.
 func (g *Guard) StartWatchdog() error {
 	if !platform.GroupsSupported {
 		return nil
@@ -126,7 +133,7 @@ func (g *Guard) StartWatchdog() error {
 	if err != nil {
 		return fmt.Errorf("locate executable: %w", err)
 	}
-	cmd := exec.Command(exe, WatchdogFlag)
+	cmd := exec.Command(exe, WatchdogFlag, g.session)
 	cmd.SysProcAttr = platform.DetachedAttr()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -191,8 +198,9 @@ func (g *Guard) saveLocked() {
 }
 
 // RunWatchdog is the watchdog's main loop. It returns when RepoDock says
-// goodbye, or kills every tracked group when the pipe closes without one.
-func RunWatchdog(in io.Reader) {
+// goodbye, or kills every tracked group — and every process still marked
+// with session — when the pipe closes without one.
+func RunWatchdog(in io.Reader, session string) {
 	entries := map[int]Entry{}
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
@@ -218,6 +226,7 @@ func RunWatchdog(in io.Reader) {
 		list = append(list, e)
 	}
 	killAll(list)
+	stopSession(session)
 }
 
 // killAll terminates the groups that still belong to RepoDock: SIGTERM,

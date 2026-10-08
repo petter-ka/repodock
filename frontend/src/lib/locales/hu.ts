@@ -94,6 +94,12 @@ export const hu: Messages = {
     runHint: "A RepoDock indította — a futás a teljes folyamatfával együtt leáll.",
     killed: "{pid} PID leállítva ({count} folyamat)", killedForced: "{pid} PID nem állt le időben, kényszerítve leállítva ({count} folyamat)", stoppedRun: "A(z) {pid} PID RepoDock futásának leállítása",
   },
+  leftover: {
+    title: "Futva maradt folyamatok", description: "Ezeket egy korábbi, nem szabályosan leállt RepoDock munkamenet indította, és még mindig futnak. Állítsd le őket, hogy felszabaduljanak a portjaik és fájljaik.",
+    unknownRepo: "Nem regisztrált repó", processes: "{count} folyamat", started: "indult: {time}", port: ":{port}",
+    stop: "Leállítás", stopAll: "Mind leállítása", keep: "Hadd fussanak",
+    stopped: "{count} futva maradt folyamat leállítva", nothingStopped: "Ezek a folyamatok már kiléptek.",
+  },
   jwt: {
     title: "JWT eszköz", encode: "Kódolás", decode: "Dekódolás", mode: "Mód",
     claims: "Claimek", id: "ID", email: "E-mail", expires: "Lejárat (nap)", algorithm: "Algoritmus", issuer: "Kibocsátó (iss)", subject: "Alany (sub)",

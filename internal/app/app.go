@@ -68,8 +68,14 @@ func IsWatchdog(args []string) bool {
 }
 
 // RunWatchdog runs the watchdog until RepoDock exits; it then kills any
-// process group RepoDock left behind.
-func RunWatchdog() { guard.RunWatchdog(os.Stdin) }
+// process group (and marked process) RepoDock left behind.
+func RunWatchdog(args []string) {
+	session := ""
+	if len(args) > 2 {
+		session = args[2]
+	}
+	guard.RunWatchdog(os.Stdin, session)
+}
 
 // NewWith allows tests and tools to supply a workspace location and process
 // tuning.
@@ -163,6 +169,11 @@ func (a *App) shutdown(_ context.Context) {
 	a.shutdownOnce.Do(func() {
 		a.process.Shutdown(5 * time.Second)
 		if a.guard != nil {
+			// Descendants that left their process group carry the session
+			// marker; nothing RepoDock started may outlive it (ADR-0021).
+			if n := a.guard.StopOwn(); n > 0 {
+				slog.Warn("stopped processes that left their group", "count", n)
+			}
 			a.guard.Close()
 		}
 		if err := a.workspace.Save(); err != nil {

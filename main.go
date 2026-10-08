@@ -22,7 +22,7 @@ func main() {
 	// The same binary doubles as the process watchdog (ADR-0019); it must
 	// branch off before any UI is created.
 	if app.IsWatchdog(os.Args) {
-		app.RunWatchdog()
+		app.RunWatchdog(os.Args)
 		return
 	}
 	application := app.New()

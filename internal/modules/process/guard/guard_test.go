@@ -16,8 +16,12 @@ import (
 
 // The test binary doubles as the watchdog, exactly like the app binary.
 func TestMain(m *testing.M) {
-	if len(os.Args) > 1 && os.Args[1] == WatchdogFlag {
-		RunWatchdog(os.Stdin)
+	if len(os.Args) > 2 && os.Args[1] == WatchdogFlag {
+		RunWatchdog(os.Stdin, os.Args[2])
+		os.Exit(0)
+	}
+	if len(os.Args) > 1 && os.Args[1] == sleeperFlag {
+		time.Sleep(time.Minute)
 		os.Exit(0)
 	}
 	os.Exit(m.Run())

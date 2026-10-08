@@ -20,6 +20,19 @@ export type HostProcess = {
 }
 export type KillResult = { pid: number; signalled: number[]; forced: boolean; runId: string }
 
+/** A run from an earlier RepoDock session that is still running (ADR-0021). */
+export type LeftoverRun = {
+  runId: string
+  repositoryId: string
+  /** display name; empty when the repository is no longer registered */
+  repositoryName: string
+  command: string
+  startedAt: string
+  /** surviving processes, the oldest (root) first */
+  pids: number[]
+  ports: number[]
+}
+
 export type JwtAlgorithm = "RS256" | "HS256"
 export type JwtSettings = {
   algorithm: JwtAlgorithm
@@ -230,6 +243,8 @@ export type AppBinding = {
   FindProcessByPID(pid: number): Promise<HostProcess>
   FindProcessesByPort(port: number): Promise<HostProcess[]>
   KillHostProcess(pid: number, includeChildren: boolean): Promise<KillResult>
+  LeftoverProcesses(): Promise<LeftoverRun[]>
+  StopLeftoverProcesses(runIDs: string[]): Promise<number>
   JWTSettings(): Promise<JwtSettings>
   SaveJWTSettings(settings: JwtSettings): Promise<JwtSettings>
   GenerateJWT(settings: JwtSettings): Promise<JwtToken>

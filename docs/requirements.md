@@ -55,7 +55,7 @@ Needs enough observability to diagnose runaway local dev processes.
 - UI must remain responsive while many processes stream output.
 - Process state must survive frontend rerenders without losing backend truth.
 - Local data must stay local by default.
-- No process started by RepoDock may outlive it — on quit, on termination signals, or after a crash/Force Quit (ADR-0019).
+- No process started by RepoDock may outlive it — on quit, on termination signals, or after a crash/Force Quit (ADR-0019), including descendants that left their process group; whatever still survived is listed at the next launch so the user can stop it (ADR-0021).
 - The application should work without Node.js on the target machine after packaging.
 - The process layer must support Windows/macOS/Linux semantics.
 

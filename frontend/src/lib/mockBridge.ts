@@ -534,6 +534,9 @@ export function createMockBackend(): Backend {
       killedHost.add(pid)
       return { pid, signalled: includeChildren ? [pid + 1, pid] : [pid], forced: false, runId: "" }
     },
+    // The browser mock has no earlier sessions.
+    async LeftoverProcesses() { return [] },
+    async StopLeftoverProcesses() { return 0 },
     // JWT tool: tokens are not really signed in the browser mock.
     async JWTSettings() {
       return structuredClone(jwtSettings)
