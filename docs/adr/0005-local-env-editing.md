@@ -15,3 +15,4 @@ RepoDock discovers common `.env*` files but only reads and writes their content 
 
 - The Environment drawer is a distinct module/service boundary.
 - Future secret masking can be added without changing repository registration.
+- The drawer offers a Form view (parsed key/value rows) and a Raw view over one text draft. Form edits go through line-preserving helpers (`envDocument.ts`) instead of re-serializing the file, keeping the "preserve file text" rule. Saving is confirmed with a variable-level change list.

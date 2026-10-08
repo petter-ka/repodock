@@ -191,6 +191,25 @@ func TestCancelStopsCurrentStep(t *testing.T) {
 	}
 }
 
+func TestStoppingStepProcessCancelsSequence(t *testing.T) {
+	fake := newFake()
+	r := New(fake)
+	run, _ := r.Start(repo, steps("block", "never"))
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && r.List()[0].Steps[0].RunID == "" {
+		time.Sleep(5 * time.Millisecond)
+	}
+	// The user stops the step's process from the process card, not the sequence.
+	if err := fake.Stop(r.List()[0].Steps[0].RunID); err != nil {
+		t.Fatal(err)
+	}
+	final, _ := r.Wait(run.ID)
+	want := []domain.StepStatus{domain.StepCancelled, domain.StepCancelled}
+	if final.Status != domain.SequenceCancelled || !equal(statuses(final), want) {
+		t.Fatalf("final = %s %v", final.Status, statuses(final))
+	}
+}
+
 func TestNoEnabledSteps(t *testing.T) {
 	r := New(newFake())
 	all := steps("a")

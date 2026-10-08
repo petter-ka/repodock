@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, CircleStop, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { forwardRef, useMemo, useState, type DragEvent } from "react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { PromptDialog } from "@/components/shared/PromptDialog"
@@ -422,6 +422,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
 const healthIcon: Record<RepoHealth, React.ReactNode> = {
   running: <CircleDot className="size-4 animate-pulse text-success" />,
   success: <CheckCircle2 className="size-4 text-success" />,
+  stopped: <CircleStop className="size-4 text-warning" />,
   danger: <XCircle className="size-4 text-destructive" />,
 }
 

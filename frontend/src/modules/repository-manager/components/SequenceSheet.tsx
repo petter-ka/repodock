@@ -113,7 +113,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
           <SheetDescription>{t.sequence.hint}</SheetDescription>
           {sequence && (
             <div className="mt-2 flex items-center gap-2 text-xs">
-              <Badge variant={sequence.status === "running" ? "info" : sequence.status === "completed" ? "success" : sequence.status === "failed" ? "destructive" : "outline"}>
+              <Badge variant={sequence.status === "running" ? "info" : sequence.status === "completed" ? "success" : sequence.status === "failed" ? "destructive" : sequence.status === "cancelled" ? "warning" : "outline"}>
                 {t.sequence.sequenceStatus[sequence.status]}
               </Badge>
             </div>
@@ -242,7 +242,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
                       className={cn("h-8 min-w-0 flex-1 font-mono text-sm", noop && "border-warning/60")}
                     />
                   )}
-                  {state && <Badge variant={stepStatusVariant[state.status]}>{t.sequence.status[state.status]}</Badge>}
+                  {state && <Badge variant={state.status === "cancelled" && !state.runId ? "outline" : stepStatusVariant[state.status]}>{t.sequence.status[state.status]}</Badge>}
                   <div className="flex shrink-0 items-center">
                     <Tooltip label={t.sequence.moveUp}>
                       <Button size="icon-sm" variant="ghost" aria-label={t.sequence.moveUp} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></Button>

@@ -381,3 +381,51 @@ type StartupReport struct {
 	RecoveredBackup string   `json:"recoveredBackup"`
 	Warnings        []string `json:"warnings"`
 }
+
+// JWTSettings is the remembered input of the "JWT tool" mini app. Keys are
+// secrets: they are stored only in the app's local settings file (0600) and
+// never logged or exported.
+type JWTSettings struct {
+	// Algorithm is RS256 (PEM key pair) or HS256 (shared secret).
+	Algorithm string `json:"algorithm"`
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	// ExpiresInDays may be fractional (0.5 = 12 hours).
+	ExpiresInDays float64 `json:"expiresInDays"`
+	Issuer        string  `json:"issuer"`
+	Subject       string  `json:"subject"`
+	Realm         string  `json:"realm"`
+	Channel       string  `json:"channel"`
+	DeviceID      string  `json:"deviceId"`
+	// Roles is the user's role catalogue; SelectedRoles go into the token.
+	Roles         []string `json:"roles"`
+	SelectedRoles []string `json:"selectedRoles"`
+	// ExtraClaims is an optional JSON object merged over the payload.
+	ExtraClaims string `json:"extraClaims"`
+	// PrivateKey/PublicKey are PEM text or base64-encoded PEM (RS256);
+	// Secret is the HS256 shared secret.
+	PrivateKey string `json:"privateKey"`
+	PublicKey  string `json:"publicKey"`
+	Secret     string `json:"secret"`
+}
+
+// JWTToken is a generated token and its decoded parts.
+type JWTToken struct {
+	Token     string `json:"token"`
+	Payload   string `json:"payload"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// JWTDecoded is a parsed token. Signature is "valid", "invalid" or
+// "unverified" (no key to check it with).
+type JWTDecoded struct {
+	Header         string   `json:"header"`
+	Payload        string   `json:"payload"`
+	Algorithm      string   `json:"algorithm"`
+	IssuedAt       string   `json:"issuedAt"`
+	ExpiresAt      string   `json:"expiresAt"`
+	Expired        bool     `json:"expired"`
+	Roles          []string `json:"roles"`
+	Signature      string   `json:"signature"`
+	SignatureError string   `json:"signatureError"`
+}

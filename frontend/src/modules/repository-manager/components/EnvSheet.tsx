@@ -1,6 +1,5 @@
-import { Eye, EyeOff, FileKey2, Loader2, Save, ShieldAlert } from "lucide-react"
+import { Code2, Eye, EyeOff, FileKey2, ListTree, Loader2, Save, ShieldAlert } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { errorMessage } from "@/lib/bridge"
@@ -9,10 +8,14 @@ import { hasMod, modLabel } from "@/lib/keyboard"
 import { cn, formatTime } from "@/lib/utils"
 import { repositoryApi } from "../api"
 import { displayName, type EnvFile, type Repository } from "../domain"
+import { diffEnv, envTimestamp, keepPreviousAsComments } from "../envDocument"
 import { maskEnv } from "../envMask"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
+import { EnvChangesDialog } from "./EnvChangesDialog"
+import { EnvForm } from "./EnvForm"
 
-type Pending = { kind: "switch"; name: string } | { kind: "close" } | null
+type Pending = { kind: "save" } | { kind: "switch"; name: string } | { kind: "close" } | null
+type View = "form" | "raw"
 
 export function EnvSheet({ repo, open, actions, onOpenChange }: {
   repo: Repository
@@ -29,9 +32,11 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
   const [loadError, setLoadError] = useState("")
   const [saving, setSaving] = useState(false)
   const [pending, setPending] = useState<Pending>(null)
+  const [view, setView] = useState<View>("form")
 
   const dirty = file !== null && draft !== file.content
   const masked = useMemo(() => (revealed ? "" : maskEnv(draft)), [revealed, draft])
+  const changes = useMemo(() => (file ? diffEnv(file.content, draft) : []), [file, draft])
 
   // Pick the first file on open; mask again every time the sheet opens.
   useEffect(() => {
@@ -69,11 +74,19 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
     }
   }, [open])
 
-  const save = async () => {
+  /** Saving always goes through the changes dialog. */
+  const requestSave = () => {
+    if (file && dirty && !saving) setPending({ kind: "save" })
+  }
+
+  const save = async (content = draft) => {
     if (!file || !dirty) return
     setSaving(true)
     try {
-      if (await actions.saveEnvFile(repo, file.name, draft)) setFile({ ...file, content: draft, modifiedAt: new Date().toISOString() })
+      if (await actions.saveEnvFile(repo, file.name, content)) {
+        setDraft(content)
+        setFile({ ...file, content, modifiedAt: new Date().toISOString() })
+      }
     } finally {
       setSaving(false)
     }
@@ -101,7 +114,7 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
         onKeyDown={(event) => {
           if (hasMod(event) && event.key.toLowerCase() === "s") {
             event.preventDefault()
-            void save()
+            requestSave()
           }
         }}
       >
@@ -130,7 +143,20 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
             <div className="flex min-h-0 flex-col">
               <div className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-xs">
                 <ShieldAlert className="size-3.5 shrink-0 text-warning" />
-                <span className="text-muted-foreground">{t.env.sensitive}</span>
+                <span className="min-w-0 flex-1 text-muted-foreground">{t.env.sensitive}</span>
+                <div role="radiogroup" aria-label={t.env.view} className="flex shrink-0 rounded-lg border border-border p-0.5">
+                  {([["form", t.env.form, <ListTree key="i" className="size-3.5" />], ["raw", t.env.raw, <Code2 key="i" className="size-3.5" />]] as const).map(([value, label, icon]) => (
+                    <button
+                      key={value}
+                      role="radio"
+                      aria-checked={view === value}
+                      onClick={() => setView(value)}
+                      className={cn("flex items-center gap-1.5 rounded-md px-2 py-1 outline-none transition focus-visible:ring-2 focus-visible:ring-ring", view === value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                    >
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="relative min-h-0 flex-1 bg-console">
@@ -138,6 +164,8 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
                   <div className="flex h-full items-center justify-center text-console-muted"><Loader2 className="size-5 animate-spin" /></div>
                 ) : loadError ? (
                   <div role="alert" className="p-4 text-sm text-destructive">{loadError}</div>
+                ) : view === "form" && file ? (
+                  <EnvForm draft={draft} saved={file.content} revealed={revealed} onChange={setDraft} />
                 ) : revealed ? (
                   <textarea
                     value={draft}
@@ -159,12 +187,12 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
 
               <div className="flex items-center gap-2 border-t border-border px-4 py-3">
                 <Button variant="outline" size="sm" disabled={!file} onClick={() => setRevealed((value) => !value)}>
-                  {revealed ? <><EyeOff /> {t.env.hide}</> : <><Eye /> {t.env.reveal}</>}
+                  {revealed ? <><EyeOff /> {t.env.hide}</> : <><Eye /> {view === "form" ? t.env.showValues : t.env.reveal}</>}
                 </Button>
                 <span className="text-[11px] text-muted-foreground">
                   {dirty ? <span className="font-medium text-warning">{t.env.unsaved}</span> : file ? f(t.env.modified, { time: formatTime(file.modifiedAt) }) : null}
                 </span>
-                <Button className="ml-auto" size="sm" title={`${modLabel}+S`} disabled={!dirty || saving} onClick={() => void save()}>
+                <Button className="ml-auto" size="sm" title={`${modLabel}+S`} disabled={!dirty || saving} onClick={requestSave}>
                   <Save /> {saving ? t.common.saving : t.common.save}
                 </Button>
               </div>
@@ -173,15 +201,22 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
         )}
       </SheetContent>
 
-      <ConfirmDialog
+      <EnvChangesDialog
         open={pending !== null}
-        title={t.env.unsavedTitle}
-        description={f(t.env.unsavedBody, { name: file?.name ?? "" })}
-        confirmLabel={t.common.discard}
-        destructive
+        title={pending?.kind === "save" ? f(t.env.saveTitle, { name: file?.name ?? "" }) : t.env.unsavedTitle}
+        description={pending?.kind === "save" ? t.env.saveBody : f(t.env.unsavedBody, { name: file?.name ?? "" })}
+        changes={changes}
+        revealed={revealed}
+        confirmLabel={pending?.kind === "save" ? t.common.save : t.common.discard}
+        destructive={pending?.kind !== "save"}
+        alternative={pending?.kind === "save" && file && changes.some((change) => change.kind !== "added")
+          ? { label: t.env.saveKeepOld, hint: t.env.saveKeepOldHint, onConfirm: () => save(keepPreviousAsComments(file.content, draft, envTimestamp())) }
+          : undefined}
         onOpenChange={(value) => { if (!value) setPending(null) }}
-        onConfirm={() => {
-          if (pending?.kind === "switch") {
+        onConfirm={async () => {
+          if (pending?.kind === "save") {
+            await save()
+          } else if (pending?.kind === "switch") {
             setDraft(file?.content ?? "")
             setSelected(pending.name)
             setRevealed(false)

@@ -1,3 +1,7 @@
+// The JWT tool signs test tokens with whatever RSA key a team already uses,
+// including legacy keys under 1024 bits (ADR-0020).
+//
+//go:debug rsa1024min=0
 package main
 
 import (

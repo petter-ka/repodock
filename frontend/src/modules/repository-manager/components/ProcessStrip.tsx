@@ -1,4 +1,4 @@
-import { Cpu, Eraser, Keyboard, Layers, MemoryStick, RotateCcw, Square, X } from "lucide-react"
+import { CheckCircle2, Cpu, Eraser, Keyboard, Layers, MemoryStick, RotateCcw, Square, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -56,12 +56,14 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
           const end = active || isZeroTime(run.endedAt) ? now : new Date(run.endedAt).getTime()
           const selected = selectedRunId === run.id
           const waiting = processStore.prompt(run.id) !== undefined
+          const live = run.status === "running"
           return (
             <div
               key={run.id}
               className={cn(
                 "group/card relative w-[290px] shrink-0 rounded-xl border bg-background p-3 transition",
-                selected ? "border-primary ring-1 ring-primary/40" : waiting ? "border-warning/70" : "border-border hover:border-primary/40",
+                live && "bg-success/5",
+                selected ? "border-primary ring-1 ring-primary/40" : waiting ? "border-warning/70" : live ? "border-success/60 ring-1 ring-success/25 hover:border-success" : "border-border hover:border-primary/40",
                 !active && "opacity-80",
               )}
             >
@@ -72,7 +74,14 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
                 className="absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
               <div className="pointer-events-none relative flex items-start gap-2">
-                <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", runStatusDot[run.status])} />
+                {run.status === "exited" ? (
+                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
+                ) : (
+                  <span className="relative mt-1.5 flex size-2 shrink-0">
+                    {live && <span className="absolute inline-flex size-full animate-ping rounded-full bg-success/60" />}
+                    <span className={cn("relative size-2 rounded-full", runStatusDot[run.status])} />
+                  </span>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-sm font-medium">{run.label}</span>

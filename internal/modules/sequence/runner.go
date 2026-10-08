@@ -121,7 +121,9 @@ func (r *Runner) execute(st *state, repo domain.Repository, steps []domain.Comma
 		}
 
 		final, err := r.exec.Wait(run.ID)
-		if r.isCancelled(st) {
+		// Cancelling the sequence, or stopping the step's process from the
+		// UI, is a user decision rather than a failure.
+		if r.isCancelled(st) || (err == nil && final.Status == domain.RunStopped) {
 			r.update(st, func() { st.run.Steps[i].Status = domain.StepCancelled })
 			r.finish(st, i+1, domain.SequenceCancelled)
 			return

@@ -3,7 +3,7 @@
 // sequences; it never touches the real filesystem.
 import type { Backend } from "./bridge"
 import type {
-  AppBinding, CommandStep, HostProcess, QuickCommand, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
+  AppBinding, CommandStep, HostProcess, JwtSettings, QuickCommand, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
 } from "./contracts"
 import { displayName } from "./contracts"
 
@@ -58,6 +58,11 @@ export function createMockBackend(): Backend {
   const sequenceDone = new Map<string, Promise<void>>()
   const groupRuns = new Map<string, GroupRun & { cancelled?: boolean }>()
   const importFiles = new Map<string, string>()
+  let jwtSettings: JwtSettings = {
+    algorithm: "RS256", id: "", email: "", expiresInDays: 7, issuer: "bms", subject: "bms", realm: "customer-service", channel: "bms",
+    deviceId: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+    roles: ["admin", "customer-service:read", "customer-service:write"], selectedRoles: ["admin"], extraClaims: "", privateKey: "", publicKey: "", secret: "",
+  }
   const killedHost = new Set<number>()
   // A few fake machine processes plus RepoDock's own running runs.
   const hostProcesses = (): HostProcess[] => {
@@ -528,6 +533,50 @@ export function createMockBackend(): Backend {
       if (found.runId) { await api.StopProcess(found.runId); return { pid, signalled: [pid], forced: false, runId: found.runId } }
       killedHost.add(pid)
       return { pid, signalled: includeChildren ? [pid + 1, pid] : [pid], forced: false, runId: "" }
+    },
+    // JWT tool: tokens are not really signed in the browser mock.
+    async JWTSettings() {
+      return structuredClone(jwtSettings)
+    },
+    async SaveJWTSettings(settings) {
+      const roles = [...new Set(settings.roles.map((r) => r.trim()).filter(Boolean))]
+      jwtSettings = { ...structuredClone(settings), roles, selectedRoles: roles.filter((r) => settings.selectedRoles.includes(r)) }
+      return structuredClone(jwtSettings)
+    },
+    async GenerateJWT(settings) {
+      if (!settings.id.trim()) throw "ID is required"
+      if (!settings.email.trim()) throw "email is required"
+      if (!(settings.expiresInDays > 0)) throw "expiry must be more than 0 days"
+      const iat = Math.floor(Date.now() / 1000)
+      const exp = iat + Math.floor(settings.expiresInDays * 86400)
+      const extra = settings.extraClaims.trim() ? JSON.parse(settings.extraClaims) as Record<string, unknown> : {}
+      const payload = {
+        id: settings.id, userId: settings.email, userName: settings.email, name: settings.email, deviceId: settings.deviceId, realm: settings.realm,
+        resource_access: { roles: settings.selectedRoles }, channel: settings.channel, iat, exp, iss: settings.issuer, sub: settings.subject, ...extra,
+      }
+      const segment = (value: unknown) => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value)))).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_")
+      return { token: `${segment({ alg: settings.algorithm, typ: "JWT" })}.${segment(payload)}.bW9jay1zaWduYXR1cmU`, payload: JSON.stringify(payload, null, 2), expiresAt: new Date(exp * 1000).toISOString() }
+    },
+    async DecodeJWT(token) {
+      const parts = token.trim().replace(/^Bearer\s+/, "").split(".")
+      if (parts.length !== 3) throw "a JWT has three dot-separated parts"
+      const read = (segment: string, name: string) => {
+        try {
+          const bytes = Uint8Array.from(atob(segment.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
+          return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>
+        } catch {
+          throw `the ${name} is not base64url JSON`
+        }
+      }
+      const header = read(parts[0], "header")
+      const payload = read(parts[1], "payload")
+      const time = (value: unknown) => (typeof value === "number" ? new Date(value * 1000).toISOString() : "")
+      const roles = (payload.resource_access as { roles?: string[] } | undefined)?.roles ?? []
+      return {
+        header: JSON.stringify(header, null, 2), payload: JSON.stringify(payload, null, 2), algorithm: String(header.alg ?? ""),
+        issuedAt: time(payload.iat), expiresAt: time(payload.exp), expired: typeof payload.exp === "number" && Date.now() / 1000 >= payload.exp,
+        roles, signature: "unverified" as const, signatureError: "signatures are not checked in the browser mock",
+      }
     },
     async SaveQuickCommands(repoID, commands) {
       const clean = commands

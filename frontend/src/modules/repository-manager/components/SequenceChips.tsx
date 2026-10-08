@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, ChevronRight, CircleDot, CircleSlash, Clock, Loader2, Pencil, Play, Square, XCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronRight, CircleDot, CircleSlash, CircleStop, Clock, Loader2, Pencil, Play, Square, XCircle } from "lucide-react"
 import { Fragment, useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,9 @@ const stepIcon: Partial<Record<StepStatus, React.ReactNode>> = {
   skipped: <CircleSlash className="size-3 shrink-0 text-muted-foreground" />,
   cancelled: <CircleSlash className="size-3 shrink-0 text-muted-foreground" />,
 }
+
+/** A cancelled step that had started was stopped by the user: a warning, not a failure. */
+const stoppedIcon = <CircleStop className="size-3 shrink-0 text-warning" />
 
 /**
  * The repository's enabled sequence steps on one line, in run order, with
@@ -69,9 +72,11 @@ export function SequenceChips({ repo, sequence, runningLabels, onRunScript, onRu
         )}
         {steps.map((step, index) => {
           const { run, text, problem } = resolve(step)
-          const state = stepState.get(step.id)?.status
+          const stepRun = stepState.get(step.id)
+          const state = stepRun?.status
+          const stopped = state === "cancelled" && !!stepRun?.runId
           const live = runningLabels.has(step.label)
-          const icon = state ? stepIcon[state] : live ? stepIcon.running : null
+          const icon = stopped ? stoppedIcon : state ? stepIcon[state] : live ? stepIcon.running : null
           const name = step.label || step.script || text
           return (
             <Fragment key={step.id}>
@@ -92,6 +97,7 @@ export function SequenceChips({ repo, sequence, runningLabels, onRunScript, onRu
                     className={cn(
                       "group/chip inline-flex h-6 max-w-[220px] items-center gap-1.5 rounded-full border px-2.5 text-xs outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
                       state === "failed" ? "border-destructive/50 bg-destructive/10"
+                        : stopped ? "border-warning/50 bg-warning/10"
                         : state === "running" || live ? "border-primary/50 bg-primary/10"
                           : "border-border bg-card enabled:hover:border-primary/50 enabled:hover:bg-accent",
                       !run && !problem && "border-dashed text-muted-foreground",
@@ -111,7 +117,7 @@ export function SequenceChips({ repo, sequence, runningLabels, onRunScript, onRu
       </ol>
       <div className="flex shrink-0 items-center gap-1">
         {sequence && !running && sequence.status !== "completed" && (
-          <Badge variant={sequence.status === "failed" ? "destructive" : "outline"}>{t.sequence.sequenceStatus[sequence.status]}</Badge>
+          <Badge variant={sequence.status === "failed" ? "destructive" : sequence.status === "cancelled" ? "warning" : "outline"}>{t.sequence.sequenceStatus[sequence.status]}</Badge>
         )}
         {running && sequence ? (
           <Tooltip label={t.sequence.cancelRun}>

@@ -35,18 +35,18 @@ describe("latestRunHealth", () => {
     expect(latestRunHealth([devServer(1, { status: "failed", exitCode: 137 })])?.health).toBe("danger")
   })
 
-  it("treats a run stopped from the UI as neutral, not red", () => {
-    expect(latestRunHealth([devServer(1, { status: "stopped", exitCode: 1, endedAt: at(9) })])).toBeNull()
+  it("treats a run stopped from the UI as a warning, not red", () => {
+    expect(latestRunHealth([devServer(1, { status: "stopped", exitCode: 1, endedAt: at(9) })])?.health).toBe("stopped")
     // Stopping the dev server must not resurface an older failure either.
     const runs = [run("lint", 1, { status: "failed", exitCode: 2, endedAt: at(2) }), devServer(5, { status: "stopped", exitCode: 1, endedAt: at(9) })]
-    expect(latestRunHealth(runs)).toBeNull()
+    expect(latestRunHealth(runs)?.health).toBe("stopped")
   })
 
   it("orders finished runs by when they ended, not when they started", () => {
     // dev started first, lint started later and failed while dev was running,
-    // then the user stopped dev: the stop is the most recent event → neutral.
+    // then the user stopped dev: the stop is the most recent event → stopped.
     const stoppedLast = [devServer(1, { status: "stopped", exitCode: 1, endedAt: at(9) }), run("lint", 3, { status: "failed", exitCode: 1, endedAt: at(4) })]
-    expect(latestRunHealth(stoppedLast)).toBeNull()
+    expect(latestRunHealth(stoppedLast)?.health).toBe("stopped")
     // If the failure happens after the stop, it is shown.
     const failedLast = [devServer(1, { status: "stopped", exitCode: 1, endedAt: at(4) }), run("lint", 3, { status: "failed", exitCode: 1, endedAt: at(9) })]
     expect(latestRunHealth(failedLast)?.health).toBe("danger")

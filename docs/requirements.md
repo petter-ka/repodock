@@ -47,6 +47,7 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-23 | Pin scripts/commands as Quick chips per repository, run them in the background in a separate drawer; include them in export/import | P1 |
 | FR-24 | Resize the repository sidebar | P2 |
 | FR-25 | Mini apps: toggleable, draggable, non-blocking floating tools; first app kills a process by PID or port | P1 |
+| FR-26 | JWT tool mini app: generate test tokens with selectable roles and decode/verify tokens; input is remembered | P2 |
 
 ## Non-functional requirements
 
@@ -71,9 +72,9 @@ Needs enough observability to diagnose runaway local dev processes.
 
 - FR-01: any folder can be added; one without `package.json` is a plain folder with no scripts (ADR-0015). The same folder, or a parent/child of a registered one, can be added again as a separate record (numbered alias). A registered repository whose `package.json` later becomes unreadable or disappears keeps its last known scripts and shows the problem.
 - FR-09: memory and CPU are aggregated over the whole process tree of a run.
-- FR-07: the sidebar shows each repository's command status. Green while any command is running (long-running scripts such as `npm run dev` stay green with a running count) or when the most recently finished command exited 0; red when it failed or crashed; neutral after the user stopped it from RepoDock. The status reflects runs of the current app session; dismissed or cleared runs no longer count.
+- FR-07: the sidebar shows each repository's command status. Green while any command is running (long-running scripts such as `npm run dev` stay green with a running count) or when the most recently finished command exited 0; red when it failed or crashed; yellow (warning) after the user stopped it from RepoDock. Process cards use the same colors (exited 0 green, stopped yellow), and a sequence step whose process the user stopped shows as a yellow "cancelled" chip rather than a failure. The status reflects runs of the current app session; dismissed or cleared runs no longer count.
 - FR-11: sequence steps are foreground (must exit 0) or background (start and continue). Sequences run in the backend (ADR-0009).
-- Environment values are masked by default and revealed explicitly for editing.
+- Environment values are masked by default and revealed explicitly. An env file can be edited as a key/value form (values in password inputs until revealed; add, rename, remove variables) or as raw text after revealing; both edit the same text draft, and form edits rewrite only the affected line so comments and formatting are preserved. Saving shows a confirmation listing added, changed and removed variables (values masked unless revealed). From that dialog the user can also save while keeping previous values: each changed variable's old line is kept as a comment above the new one, removed ones at the end of the file, each with a dated `# RepoDock: previous value, replaced YYYY-MM-DD HH:mm` note; discarding unsaved changes lists them too.
 - FR-16: see ADR-0010. Acceptance criteria:
   - each group has a persisted run mode, `sequential` (default) or `parallel`, changeable from the group menu;
   - "Run group" runs every member's saved sequence in sidebar order; members without enabled steps are skipped;
@@ -131,6 +132,13 @@ Needs enough observability to diagnose runaway local dev processes.
   - "Kill process" finds processes by port (listening TCP / bound UDP) or PID and shows name, PID, ports, command line, user and start time;
   - killing requires an inline confirmation, sends SIGTERM and force-kills after 3 s if needed, optionally including child processes;
   - system processes, RepoDock itself and its parent processes cannot be killed; a process started by RepoDock stops its run instead.
+
+- FR-26 (2026-10-08): see ADR-0020. Acceptance criteria:
+  - Encode signs a token (RS256 with a PEM or base64-encoded PEM key, or HS256 with a secret) with the payload shape of the team's previous script (id, userId/userName/name = email, deviceId, realm, resource_access.roles, channel, iat, exp, iss, sub), optional extra JSON claims merged over it; ID, email, a positive expiry and a key are required;
+  - roles are a remembered catalogue with search, create, rename, delete and selection (single and "shown"); only selected roles go into the token;
+  - all fields, roles and keys are remembered on this computer (0600 file, not exported);
+  - Decode shows header, payload, issue/expiry time and expired state, and verifies the signature with the configured key (valid / invalid / not verified); decoding a token fills the Encode form from it (fields, expiry, algorithm, roles added to the catalogue and selected, other claims as extra claims; keys unchanged);
+  - the generated token can be copied or opened in the decoder.
 
 ## Empty command semantics
 

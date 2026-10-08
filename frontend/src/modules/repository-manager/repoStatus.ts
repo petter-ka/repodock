@@ -1,6 +1,6 @@
 import { isActive, isZeroTime, type Run } from "./domain"
 
-export type RepoHealth = "running" | "success" | "danger"
+export type RepoHealth = "running" | "success" | "stopped" | "danger"
 
 /** When a finished run reached its terminal state (falls back to its start). */
 function finishedAt(run: Run) {
@@ -14,7 +14,7 @@ function finishedAt(run: Run) {
  *   `npm run dev`) never finish, so a live process wins over other results.
  * - otherwise the run that finished most recently decides: exit code 0 →
  *   success, failure or crash → danger.
- * - a run the user stopped from RepoDock is neutral (null), not a failure.
+ * - a run the user stopped from RepoDock is a warning (stopped), not a failure.
  * - skipped no-op steps are ignored.
  *
  * `run` is the run the status refers to (the newest active run while
@@ -32,7 +32,8 @@ export function latestRunHealth(runs: readonly Run[]): { run: Run; health: RepoH
     }
   }
   if (latestActive) return { run: latestActive, health: "running" }
-  if (!latestFinished || latestFinished.status === "stopped") return null
+  if (!latestFinished) return null
+  if (latestFinished.status === "stopped") return { run: latestFinished, health: "stopped" }
   if (latestFinished.status === "exited" && latestFinished.exitCode === 0) return { run: latestFinished, health: "success" }
   return { run: latestFinished, health: "danger" }
 }

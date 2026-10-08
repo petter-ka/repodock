@@ -20,6 +20,37 @@ export type HostProcess = {
 }
 export type KillResult = { pid: number; signalled: number[]; forced: boolean; runId: string }
 
+export type JwtAlgorithm = "RS256" | "HS256"
+export type JwtSettings = {
+  algorithm: JwtAlgorithm
+  id: string
+  email: string
+  expiresInDays: number
+  issuer: string
+  subject: string
+  realm: string
+  channel: string
+  deviceId: string
+  roles: string[]
+  selectedRoles: string[]
+  extraClaims: string
+  privateKey: string
+  publicKey: string
+  secret: string
+}
+export type JwtToken = { token: string; payload: string; expiresAt: string }
+export type JwtDecoded = {
+  header: string
+  payload: string
+  algorithm: string
+  issuedAt: string
+  expiresAt: string
+  expired: boolean
+  roles: string[]
+  signature: "valid" | "invalid" | "unverified"
+  signatureError: string
+}
+
 /** A pinned script, global command or shell command (exactly one is set). */
 export type QuickCommand = { id: string; label: string; script: string; globalCommand: string; command: string }
 
@@ -199,6 +230,10 @@ export type AppBinding = {
   FindProcessByPID(pid: number): Promise<HostProcess>
   FindProcessesByPort(port: number): Promise<HostProcess[]>
   KillHostProcess(pid: number, includeChildren: boolean): Promise<KillResult>
+  JWTSettings(): Promise<JwtSettings>
+  SaveJWTSettings(settings: JwtSettings): Promise<JwtSettings>
+  GenerateJWT(settings: JwtSettings): Promise<JwtToken>
+  DecodeJWT(token: string, settings: JwtSettings): Promise<JwtDecoded>
   MoveGroup(id: string, index: number): Promise<void>
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
   RunGroup(groupID: string): Promise<GroupRun>

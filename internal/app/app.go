@@ -19,6 +19,7 @@ import (
 	"github.com/example/repodock/internal/domain"
 	envmod "github.com/example/repodock/internal/modules/environment"
 	hostmod "github.com/example/repodock/internal/modules/hostprocess"
+	jwtmod "github.com/example/repodock/internal/modules/jwttool"
 	processmod "github.com/example/repodock/internal/modules/process"
 	"github.com/example/repodock/internal/modules/process/guard"
 	repomod "github.com/example/repodock/internal/modules/repository"
@@ -40,6 +41,7 @@ type App struct {
 	process   *processmod.Manager
 	sequence  *seqmod.Runner
 	host      *hostmod.Service
+	jwt       *jwtmod.Service
 	// guard kills leftover process groups after a crash (ADR-0019); nil in tests.
 	guard *guard.Guard
 
@@ -78,6 +80,7 @@ func NewWith(ws *workspacemod.Service, opts processmod.Options) *App {
 		env:       envmod.New(),
 		process:   processmod.New(opts),
 		host:      hostmod.New(3 * time.Second),
+		jwt:       jwtmod.New(filepath.Join(filepath.Dir(ws.Path()), "jwt-tool.json")),
 	}
 	a.sequence = seqmod.New(stepExecutor{a})
 	return a
