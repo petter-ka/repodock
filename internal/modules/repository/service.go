@@ -207,17 +207,3 @@ func HasScript(repo domain.Repository, name string) bool {
 	}
 	return false
 }
-
-// DefaultSequence builds the initial command sequence from discovered
-// scripts. Every step starts disabled so nothing runs until the user opts in.
-func DefaultSequence(scripts []domain.Script) []domain.CommandStep {
-	steps := make([]domain.CommandStep, 0, len(scripts))
-	for i, script := range scripts {
-		steps = append(steps, domain.CommandStep{
-			ID:     fmt.Sprintf("script-%d-%s", i, script.Name),
-			Label:  script.Name,
-			Script: script.Name,
-		})
-	}
-	return steps
-}

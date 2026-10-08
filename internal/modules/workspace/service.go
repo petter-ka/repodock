@@ -157,6 +157,7 @@ func normalize(state *domain.Workspace) {
 		if repo.QuickCommands == nil {
 			repo.QuickCommands = []domain.QuickCommand{}
 		}
+		repo.CommandSequence = enabledSteps(repo.CommandSequence)
 		if _, ok := groupIndex[repo.GroupID]; !ok {
 			repo.GroupID = state.Groups[0].ID
 		}
@@ -615,12 +616,25 @@ func CleanGlobalCommands(commands []domain.GlobalCommand) ([]domain.GlobalComman
 	return clean, nil
 }
 
-// UpdateCommandSequence replaces a repository's ordered steps. Steps without
-// an ID receive one; blank labels are derived from the step content.
+// enabledSteps keeps only the steps that run (ADR-0022): files written
+// before it stored every script of the repository as a disabled step.
+func enabledSteps(steps []domain.CommandStep) []domain.CommandStep {
+	out := make([]domain.CommandStep, 0, len(steps))
+	for _, step := range steps {
+		if step.Enabled {
+			out = append(out, step)
+		}
+	}
+	return out
+}
+
+// UpdateCommandSequence replaces a repository's ordered steps. Only enabled
+// steps are kept; steps without an ID receive one; blank labels are derived
+// from the step content.
 func (s *Service) UpdateCommandSequence(id string, steps []domain.CommandStep) error {
 	clean := make([]domain.CommandStep, 0, len(steps))
 	seen := map[string]bool{}
-	for _, step := range steps {
+	for _, step := range enabledSteps(steps) {
 		step.Label = strings.TrimSpace(step.Label)
 		step.Script = strings.TrimSpace(step.Script)
 		step.GlobalCommand = strings.TrimSpace(step.GlobalCommand)

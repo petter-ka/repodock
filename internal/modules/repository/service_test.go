@@ -130,13 +130,6 @@ func TestScriptArgvKeepsNameAsSeparateArgument(t *testing.T) {
 	}
 }
 
-func TestDefaultSequenceIsDisabled(t *testing.T) {
-	steps := DefaultSequence(scriptsOf("dev", "build"))
-	if len(steps) != 2 || steps[0].Script != "dev" || steps[0].Enabled || steps[1].Label != "build" {
-		t.Fatalf("steps = %#v", steps)
-	}
-}
-
 func scriptsOf(names ...string) []domain.Script {
 	out := make([]domain.Script, 0, len(names))
 	for _, n := range names {

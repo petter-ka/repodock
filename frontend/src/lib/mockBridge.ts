@@ -15,7 +15,7 @@ function seedWorkspace(): Workspace {
   const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[]): Repository => ({
     id, name, alias: "", quickCommands: [], path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
     scripts: scripts.map(([n, command]) => ({ name: n, command })),
-    commandSequence: scripts.map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, globalCommand: "", command: "", enabled: n === "dev", background: n === "dev" })),
+    commandSequence: scripts.filter(([n]) => n === "dev").map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, globalCommand: "", command: "", enabled: true, background: true })),
   })
   return {
     version: 1,
@@ -265,7 +265,7 @@ export function createMockBackend(): Backend {
       const repo: Repository = {
         id: uid(), name, alias, path, packageManager: "npm", groupId: group.id, envFiles: [], quickCommands: [], lastRefreshedAt: now(), problem: "",
         scripts: [{ name: "dev", command: "node server.js" }, { name: "test", command: "node --test" }],
-        commandSequence: [{ id: uid(), label: "dev", script: "dev", globalCommand: "", command: "", enabled: false, background: true }],
+        commandSequence: [],
       }
       workspace.repositories.push(repo)
       group.repositoryIds.push(repo.id)
@@ -418,10 +418,10 @@ export function createMockBackend(): Backend {
             id: uid(), name: repo.name, alias: repo.alias?.trim() ?? "", path: repo.path, packageManager: repo.plainFolder ? "" : "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
             problem: folderExists(repo.path) ? "" : `folder not found: ${repo.path}`, scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),
             quickCommands: (repo.quickCommands ?? []).map((q) => ({ ...q, id: uid(), globalCommand: q.globalCommand ? globalIds.get(q.globalCommand) ?? "" : "" })),
-            commandSequence: repo.commandSequence?.map((s) => ({
-              ...s, id: uid(), enabled: options.keepStepsEnabled && s.enabled,
+            commandSequence: options.importSequences ? (repo.commandSequence ?? []).filter((s) => s.enabled).map((s) => ({
+              ...s, id: uid(),
               globalCommand: s.globalCommand ? globalIds.get(s.globalCommand) ?? "" : "",
-            })) ?? null,
+            })) : [],
           }
           workspace.repositories.push(record)
           group.repositoryIds.push(record.id)
@@ -591,7 +591,7 @@ export function createMockBackend(): Backend {
       return structuredClone(clean)
     },
     async SaveCommandSequence(repoID, steps: CommandStep[]) {
-      findRepo(repoID).commandSequence = steps.map((s) => ({
+      findRepo(repoID).commandSequence = steps.filter((s) => s.enabled).map((s) => ({
         ...s,
         globalCommand: s.script ? "" : s.globalCommand,
         command: s.script || s.globalCommand ? "" : s.command,

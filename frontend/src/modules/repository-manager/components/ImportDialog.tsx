@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, CheckSquare, FileCode2, FolderGit2, FolderOpen, FolderX, Globe, Loader2, ShieldAlert, Square as SquareIcon, Terminal, XCircle, Zap } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileCode2, FolderGit2, FolderOpen, FolderX, Globe, Loader2, ShieldAlert, Terminal, XCircle, Zap } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge, type BadgeVariant } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,9 +19,9 @@ const globalVariant: Record<ImportGlobalCommandPreview["status"], BadgeVariant> 
 /** Shows what an import will change and asks for confirmation. */
 export function ImportDialog({ preview, actions, onClose }: { preview: ImportPreview | null; actions: RepositoryActions; onClose: () => void }) {
   const { t, f } = useI18n()
-  // The exported step selection is kept by default; untick to import every
-  // step disabled for review (ADR-0011, amended by ADR-0015).
-  const [keepEnabled, setKeepEnabled] = useState(true)
+  // Command sequences are imported by default; untick to add the
+  // repositories with empty sequences (ADR-0011, amended by ADR-0022).
+  const [importSequences, setImportSequences] = useState(true)
   const [busy, setBusy] = useState(false)
   // Replacement folders for repositories whose path is missing on this
   // machine, keyed by the path shown in the preview.
@@ -30,7 +30,7 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
 
   useEffect(() => {
     if (preview) {
-      setKeepEnabled(true)
+      setImportSequences(true)
       setOverrides({})
       latest.current = {}
     }
@@ -65,7 +65,7 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
     setBusy(true)
     try {
       const pathOverrides = Object.fromEntries(entered.map(([key, o]) => [key, o.check!.path]))
-      if (await actions.applyImport(preview, { keepStepsEnabled: keepEnabled, pathOverrides })) onClose()
+      if (await actions.applyImport(preview, { importSequences, pathOverrides })) onClose()
     } finally {
       setBusy(false)
     }
@@ -128,7 +128,7 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                             {repo.status === "missing" && !fixed ? <FolderX className="size-4 shrink-0 text-warning" /> : <FolderGit2 className="size-4 shrink-0 text-muted-foreground" />}
                             <span className="font-medium">{repo.name}</span>
                             <span className={cn("min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground", fixed && "line-through opacity-60")} title={repo.path}>{repo.path}</span>
-                            {repo.steps && repo.steps.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{f(t.transfer.steps, { count: repo.steps.length, enabled: repo.steps.filter((s) => s.enabled).length })}</span>}
+                            {repo.steps && repo.steps.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{f(t.transfer.steps, { count: repo.steps.length })}</span>}
                             <Badge variant={fixed ? "success" : statusVariant[repo.status]}>{t.transfer.status[fixed ? "new" : repo.status]}</Badge>
                           </div>
                           {repo.status === "missing" && (
@@ -144,11 +144,8 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                           {active && (repo.steps ?? []).length > 0 && (
                             <ul className="mt-1 space-y-0.5 pl-6">
                               {(repo.steps ?? []).map((step, si) => (
-                                <li key={si} className={cn("flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground", !(keepEnabled && step.enabled) && "opacity-50")}>
+                                <li key={si} className={cn("flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground", !importSequences && "line-through opacity-50")}>
                                   <span className="w-4 shrink-0 text-right tabular-nums">{si + 1}.</span>
-                                  {keepEnabled && step.enabled
-                                    ? <CheckSquare className="size-3 shrink-0 text-primary" aria-label={t.sequence.enabled} />
-                                    : <SquareIcon className="size-3 shrink-0" aria-label={t.transfer.stepDisabled} />}
                                   {step.script ? <FileCode2 className="size-3 shrink-0" /> : step.globalCommand ? <Globe className="size-3 shrink-0" /> : <Terminal className={cn("size-3 shrink-0", step.command && "text-warning")} />}
                                   <span className="truncate">{step.script
                                     ? `${step.label || step.script} → run ${step.script}`
@@ -200,10 +197,10 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
             )}
 
             <label className="flex cursor-pointer items-start gap-2 text-sm">
-              <input type="checkbox" checked={keepEnabled} onChange={(event) => setKeepEnabled(event.target.checked)} className="mt-1 size-4 accent-[var(--primary)]" />
+              <input type="checkbox" checked={importSequences} onChange={(event) => setImportSequences(event.target.checked)} className="mt-1 size-4 accent-[var(--primary)]" />
               <span>
-                {t.transfer.keepEnabled}
-                <span className="block text-xs text-muted-foreground">{t.transfer.keepEnabledHint}</span>
+                {t.transfer.importSequences}
+                <span className="block text-xs text-muted-foreground">{t.transfer.importSequencesHint}</span>
               </span>
             </label>
 

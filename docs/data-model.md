@@ -48,7 +48,7 @@ Location: `<user config dir>/RepoDock/workspace.json`, overridable with `REPODOC
 
 ## Stability rules
 
-IDs are UUIDs and remain stable across refreshes. Scripts are refreshed from `package.json`; the user-owned command sequence is preserved, and a default (all steps disabled, one per script) is generated only when the record has never had a sequence. When `package.json` becomes unreadable, the last known scripts are kept and `problem` is set.
+IDs are UUIDs and remain stable across refreshes. Scripts are refreshed from `package.json`; the user-owned command sequence is preserved. A sequence holds only the steps that run (new records start empty; disabled steps from older files are dropped on load, ADR-0022). When `package.json` becomes unreadable, the last known scripts are kept and `problem` is set.
 
 ## Persistence and recovery
 

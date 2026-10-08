@@ -26,10 +26,9 @@
 
 ## Sequence editor
 
-- Steps run strictly top to bottom in the order shown; drag a step by its grip handle, or use ↑/↓ (or Alt+↑/↓), to reorder them before saving.
-- Each row leads with what the step runs: a Script/Command switch and the script picker or the command field. The name is a secondary, optional field below (defaults to the script or command).
-- "Command step" adds a row and puts the cursor in its command field.
-- The step type switch is Script / Global / Command. **Global** shows a select of the workspace's global commands (name — command) and a ⚙ button that opens the **Global commands** dialog. "Global step" adds a row using the first global command, or opens the dialog when none exist. A step whose global command was deleted is flagged.
+- Two panes (ADR-0022): the **palette** on the left lists the repository's package.json scripts (with their command text), the workspace's global commands (⚙ opens the **Global commands** dialog) and "Custom command" / "Empty step". Drag an item into the sequence (an insertion line shows where it lands) or click it (Enter) to append it. Items already used show a ×N badge; a script may be used more than once.
+- The **sequence** on the right is exactly what is saved and run, strictly top to bottom. Drag a step by its grip handle, or use ↑/↓ (or Alt+↑/↓), to reorder; the trash button removes it. There is no enable/disable toggle.
+- Each row shows what the step runs: script name and its command, global command name and its command, or the command field of a custom step (which receives the cursor when added). The name is a secondary, optional field below, next to the Background toggle. A step whose script or global command no longer exists is flagged.
 
 ## Global commands
 
@@ -49,7 +48,7 @@
 ## Export / import
 
 - The sidebar header has a workspace menu (⇅) with "Import…" and "Export workspace…"; each group menu has "Export group…".
-- Import always shows a preview dialog before changing anything. Commands that will be imported are visible, shell commands trigger a warning, and "Keep imported sequence steps enabled" is off by default.
+- Import always shows a preview dialog before changing anything. Commands that will be imported are visible, shell commands trigger a warning, and "Import the command sequences" is on by default; unticked, repositories are added with empty sequences (ADR-0022).
 - Global commands in the file are listed first with their full command text and a status: new, already present, or renamed ("name taken — added as …"). Global steps in the repository list show the name and command they resolve to.
 - Results are announced as a notification.
 - Repositories whose folder is missing on this machine show an inline path field with **Browse…** in the preview. Validation appears under the field (package.json found / folder not found / already registered). Invalid folders are outlined in red and block **Import** until fixed or cleared; leaving the field empty imports the repository with a warning.

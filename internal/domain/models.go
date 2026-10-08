@@ -88,6 +88,11 @@ type GlobalCommand struct {
 // the repository package manager; otherwise a non-empty GlobalCommand runs
 // the referenced workspace global command; otherwise Command runs as shell
 // text; when all are empty the step is a deliberate no-op (ADR-0006).
+//
+// A saved sequence holds only the steps that run, in order (ADR-0022);
+// package.json scripts that are not part of it are not stored. Enabled is
+// always true in saved data and is kept so older files, where disabled steps
+// were stored too, can be read (their disabled steps are dropped).
 type CommandStep struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
@@ -359,10 +364,10 @@ type ImportPreview struct {
 }
 
 type ImportOptions struct {
-	// KeepStepsEnabled preserves each step's enabled flag (the import
-	// dialog sends true unless the user opts out); when false, all
-	// imported steps are disabled until the user reviews them.
-	KeepStepsEnabled bool `json:"keepStepsEnabled"`
+	// ImportSequences imports each repository's command sequence (the
+	// import dialog sends true unless the user opts out); when false,
+	// repositories are added with an empty sequence.
+	ImportSequences bool `json:"importSequences"`
 	// PathOverrides maps a repository path shown in the preview to the
 	// folder the user picked instead (e.g. when the original is missing).
 	PathOverrides map[string]string `json:"pathOverrides"`

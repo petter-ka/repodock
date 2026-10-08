@@ -202,7 +202,8 @@ export type ImportPreview = {
   shellCommands: number
 }
 export type ImportOptions = {
-  keepStepsEnabled: boolean
+  /** import each repository's command sequence; false adds empty sequences */
+  importSequences: boolean
   /** preview path → replacement folder chosen by the user */
   pathOverrides?: Record<string, string>
 }

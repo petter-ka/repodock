@@ -34,7 +34,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := s.UpsertRepository(domain.Repository{ID: "r1", Name: "api", Path: t.TempDir(), GroupID: g.ID})
-	if err := s.UpdateCommandSequence(repo.ID, []domain.CommandStep{{Script: "dev"}, {Command: ""}}); err != nil {
+	if err := s.UpdateCommandSequence(repo.ID, []domain.CommandStep{{Script: "dev", Enabled: true}, {Command: "", Enabled: true}, {Script: "lint"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Save(); err != nil {
@@ -337,5 +337,30 @@ func TestCleanQuickCommands(t *testing.T) {
 	}
 	if _, err := CleanQuickCommands([]domain.QuickCommand{{Command: "a\nrm -rf /"}}, lookup); err == nil {
 		t.Fatal("multi-line commands must be rejected")
+	}
+}
+
+func TestOnlyEnabledStepsAreStored(t *testing.T) {
+	s := newTemp(t)
+	// A file written before ADR-0022 stored every script as a disabled step.
+	old := `{"version":1,"groups":[{"id":"g","name":"Repositories","repositoryIds":["r1"]}],"repositories":[{"id":"r1","name":"api","path":"/x","groupId":"g",` +
+		`"commandSequence":[{"id":"a","label":"build","script":"build","enabled":false},{"id":"b","label":"dev","script":"dev","enabled":true},{"id":"c","label":"lint","script":"lint","enabled":false}]}]}`
+	_ = os.MkdirAll(filepath.Dir(s.Path()), 0o700)
+	if err := os.WriteFile(s.Path(), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Load(); err != nil {
+		t.Fatal(err)
+	}
+	repo, _ := s.Repository("r1")
+	if len(repo.CommandSequence) != 1 || repo.CommandSequence[0].ID != "b" {
+		t.Fatalf("sequence = %#v", repo.CommandSequence)
+	}
+	if err := s.UpdateCommandSequence("r1", []domain.CommandStep{{Script: "a"}, {Script: "b", Enabled: true}}); err != nil {
+		t.Fatal(err)
+	}
+	repo, _ = s.Repository("r1")
+	if len(repo.CommandSequence) != 1 || repo.CommandSequence[0].Script != "b" {
+		t.Fatalf("disabled steps must not be saved: %#v", repo.CommandSequence)
 	}
 }

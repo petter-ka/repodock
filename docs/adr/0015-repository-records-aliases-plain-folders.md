@@ -33,7 +33,7 @@ Users want to register the same folder more than once (e.g. one entry per enviro
 ### Export / import (document version 3)
 
 - Repositories carry an optional `alias` and `plainFolder` flag. Version 1–2 documents are still read; either field in a version < 3 document is rejected (unknown fields are rejected anyway). An imported entry without `plainFolder` expects a package.json: until its first refresh it carries a placeholder package manager, so a folder without package.json reports a problem instead of silently becoming a plain folder.
-- Sequences round-trip completely: step order always, and the enabled/disabled selection by default (the import dialog's "Keep the exported step selection" is ticked; unticking imports every step disabled). This amends ADR-0011's disabled-by-default rule.
+- Sequences round-trip completely: step order always, and the enabled/disabled selection by default (the import dialog's "Keep the exported step selection" is ticked; unticking imports every step disabled). This amends ADR-0011's disabled-by-default rule. **Superseded by ADR-0022:** disabled steps are no longer stored; the opt-out now imports no sequences.
 - Group order is part of the round trip: new groups are inserted after their predecessor in the file (or ahead of the first file group that already exists), never just appended; existing groups are not reordered.
 - Import still skips entries whose folder was registered **before** the import, so re-importing a file is idempotent. A folder repeated **inside** the file is imported once per entry (it used to be flagged "duplicate in file"); the `duplicate` preview status is no longer produced.
 

@@ -56,7 +56,7 @@ func TestAddRepositoryDiscoversAndAllowsDuplicates(t *testing.T) {
 	if repo.Name != "fixture" || repo.PackageManager != "npm" || len(repo.Scripts) != 2 || repo.Scripts[0].Name != "hello" {
 		t.Fatalf("repo = %#v", repo)
 	}
-	if len(repo.EnvFiles) != 2 || len(repo.CommandSequence) != 2 || repo.GroupID == "" {
+	if len(repo.EnvFiles) != 2 || len(repo.CommandSequence) != 0 || repo.GroupID == "" {
 		t.Fatalf("repo = %#v", repo)
 	}
 
@@ -308,7 +308,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 			if len(r.Scripts) != 2 || len(r.EnvFiles) != 2 || r.Problem != "" {
 				t.Fatalf("imported repository was not refreshed: %+v", r)
 			}
-			if len(r.CommandSequence) != 1 || r.CommandSequence[0].Enabled || !r.CommandSequence[0].Background {
+			if len(r.CommandSequence) != 0 {
 				t.Fatalf("steps = %+v", r.CommandSequence)
 			}
 		case "gone":
@@ -516,7 +516,7 @@ func TestExportImportPreservesEverything(t *testing.T) {
 	if err != nil || preview.New != 5 || preview.Existing != 0 {
 		t.Fatalf("preview = %+v, %v", preview, err)
 	}
-	if _, err := target.ApplyImport(file, domain.ImportOptions{KeepStepsEnabled: true}); err != nil {
+	if _, err := target.ApplyImport(file, domain.ImportOptions{ImportSequences: true}); err != nil {
 		t.Fatal(err)
 	}
 

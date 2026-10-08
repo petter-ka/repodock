@@ -134,20 +134,21 @@ func TestPlanAndMerge(t *testing.T) {
 	if api.ID == "r2" || api.GroupID != merged.Groups[1].ID || merged.Groups[1].Name != "Services" || merged.Groups[1].RunMode != domain.GroupRunSequential {
 		t.Fatalf("api = %+v groups = %+v", api, merged.Groups)
 	}
-	if api.CommandSequence[0].Enabled || api.CommandSequence[0].ID == "s2" {
-		t.Fatalf("imported steps must be disabled with fresh IDs: %+v", api.CommandSequence)
+	if len(api.CommandSequence) != 0 {
+		t.Fatalf("sequences must not be imported when opted out: %+v", api.CommandSequence)
 	}
 	if len(current.Repositories) != 1 || len(current.Groups) != 1 {
 		t.Fatal("Merge must not mutate the current workspace")
 	}
 
-	_, _, kept := Merge(doc, domain.Workspace{}, e, domain.ImportOptions{KeepStepsEnabled: true})
+	_, _, kept := Merge(doc, domain.Workspace{}, e, domain.ImportOptions{ImportSequences: true})
 	if kept.RepositoriesAdded != 2 {
 		t.Fatalf("kept = %+v", kept)
 	}
-	merged2, _, _ := Merge(doc, domain.Workspace{}, e, domain.ImportOptions{KeepStepsEnabled: true})
-	if !merged2.Repositories[0].CommandSequence[0].Enabled || !merged2.Repositories[0].CommandSequence[0].Background {
-		t.Fatal("KeepStepsEnabled must preserve flags")
+	merged2, _, _ := Merge(doc, domain.Workspace{}, e, domain.ImportOptions{ImportSequences: true})
+	step := merged2.Repositories[0].CommandSequence[0]
+	if !step.Enabled || !step.Background || step.ID == "s1" {
+		t.Fatalf("imported steps keep their flags and get fresh IDs: %+v", step)
 	}
 }
 
@@ -295,7 +296,7 @@ func TestMergeGlobalCommands(t *testing.T) {
 		t.Fatalf("preview steps keep document IDs: %+v", steps)
 	}
 
-	merged, _, result := Merge(doc, current, env(), domain.ImportOptions{})
+	merged, _, result := Merge(doc, current, env(), domain.ImportOptions{ImportSequences: true})
 	if result.GlobalCommandsAdded != 2 || len(merged.GlobalCommands) != 5 || len(current.GlobalCommands) != 3 {
 		t.Fatalf("result = %+v globals = %+v", result, merged.GlobalCommands)
 	}
@@ -358,7 +359,7 @@ func TestPlainFolderFlagRoundTrip(t *testing.T) {
 	}
 }
 
-func TestMergeKeepsStepOrderAndSelection(t *testing.T) {
+func TestMergeKeepsStepOrderAndDropsDisabledSteps(t *testing.T) {
 	steps := []domain.CommandStep{
 		{ID: "1", Label: "install", Command: "npm ci", Enabled: false},
 		{ID: "2", Label: "build", Script: "build", Enabled: true},
@@ -374,14 +375,12 @@ func TestMergeKeepsStepOrderAndSelection(t *testing.T) {
 		return out
 	}
 
-	kept, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{KeepStepsEnabled: true})
-	if got, want := describe(kept.Repositories[0].CommandSequence), describe(steps); !slices.Equal(got, want) {
+	kept, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{ImportSequences: true})
+	if got, want := describe(kept.Repositories[0].CommandSequence), describe(steps[1:3]); !slices.Equal(got, want) {
 		t.Fatalf("kept = %v, want %v", got, want)
 	}
-	reviewed, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{})
-	for i, s := range reviewed.Repositories[0].CommandSequence {
-		if s.Enabled || s.Label != steps[i].Label || s.Background != steps[i].Background {
-			t.Fatalf("opt-out step %d = %+v", i, s)
-		}
+	skipped, _, _ := Merge(doc, domain.Workspace{}, env(), domain.ImportOptions{})
+	if len(skipped.Repositories[0].CommandSequence) != 0 {
+		t.Fatalf("opt-out = %+v", skipped.Repositories[0].CommandSequence)
 	}
 }

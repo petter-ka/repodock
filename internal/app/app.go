@@ -225,7 +225,7 @@ func (a *App) AddRepository(path string, groupID string) (domain.Repository, err
 	applyMetadata(&repo, meta)
 	repo.Alias = a.duplicateAlias(repo)
 	repo.EnvFiles = a.env.Names(repo.Path)
-	repo.CommandSequence = repomod.DefaultSequence(repo.Scripts)
+	repo.CommandSequence = []domain.CommandStep{}
 	repo = a.workspace.UpsertRepository(repo)
 	return repo, a.persist()
 }
@@ -526,9 +526,6 @@ func (a *App) refresh(id string) (domain.Repository, error) {
 			applyMetadata(repo, meta)
 		}
 		repo.EnvFiles = envFiles
-		if repo.CommandSequence == nil {
-			repo.CommandSequence = repomod.DefaultSequence(repo.Scripts)
-		}
 	})
 }
 

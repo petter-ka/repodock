@@ -270,7 +270,7 @@ func Plan(doc Document, current domain.Workspace, env Environment) domain.Import
 			path := LocalPath(repo.Path, env.Home)
 			// Preview steps keep document global command IDs, which match
 			// preview.GlobalCommands[].ID.
-			r := domain.ImportRepositoryPreview{Name: displayName(repo), Path: path, Steps: sanitizeSteps(repo.CommandSequence, true, nil)}
+			r := domain.ImportRepositoryPreview{Name: displayName(repo), Path: path, Steps: sanitizeSteps(repo.CommandSequence, nil)}
 			// Several records of one folder are allowed (ADR-0015), so a
 			// path repeated inside the file is imported once per entry; only
 			// paths already in the workspace are skipped.
@@ -370,8 +370,11 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 			record := domain.Repository{
 				ID: uuid.NewString(), Name: strings.TrimSpace(repo.Name), Alias: strings.TrimSpace(repo.Alias), Path: path, GroupID: target.ID,
 				Scripts: []domain.Script{}, EnvFiles: []string{},
-				CommandSequence: sanitizeSteps(repo.CommandSequence, opts.KeepStepsEnabled, globalIDs),
+				CommandSequence: []domain.CommandStep{},
 				QuickCommands:   sanitizeQuick(repo.QuickCommands, globalIDs),
+			}
+			if opts.ImportSequences {
+				record.CommandSequence = sanitizeSteps(repo.CommandSequence, globalIDs)
 			}
 			if record.Name == "" {
 				record.Name = filepath.Base(path)
@@ -391,16 +394,16 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 	return ws, added, result
 }
 
-// sanitizeSteps copies steps with fresh IDs. Unless keepEnabled is set,
-// every imported step is disabled so nothing runs until the user reviews it.
-// When globalIDs is non-nil, global command references are rewritten from
-// document IDs to local IDs.
-func sanitizeSteps(steps []domain.CommandStep, keepEnabled bool, globalIDs map[string]string) []domain.CommandStep {
-	if steps == nil {
-		return nil
-	}
+// sanitizeSteps copies the enabled steps with fresh IDs; disabled steps
+// (stored by files written before ADR-0022) are dropped. When globalIDs is
+// non-nil, global command references are rewritten from document IDs to
+// local IDs.
+func sanitizeSteps(steps []domain.CommandStep, globalIDs map[string]string) []domain.CommandStep {
 	out := make([]domain.CommandStep, 0, len(steps))
 	for _, step := range steps {
+		if !step.Enabled {
+			continue
+		}
 		step.ID = uuid.NewString()
 		step.Label = strings.TrimSpace(step.Label)
 		step.Script = strings.TrimSpace(step.Script)
@@ -414,9 +417,6 @@ func sanitizeSteps(steps []domain.CommandStep, keepEnabled bool, globalIDs map[s
 			if globalIDs != nil {
 				step.GlobalCommand = globalIDs[step.GlobalCommand]
 			}
-		}
-		if !keepEnabled {
-			step.Enabled = false
 		}
 		out = append(out, step)
 	}
