@@ -20,6 +20,18 @@ export type HostProcess = {
 }
 export type KillResult = { pid: number; signalled: number[]; forced: boolean; runId: string }
 
+/** Progress while RepoDock stops its processes before quitting (ADR-0023). */
+export type ClosingProgress = {
+  /** runs still alive, oldest first */
+  runs: { runId: string; label: string; repositoryName: string; pid: number }[]
+  /** process groups that still have members */
+  groups: number
+  /** the grace period is over and survivors are being killed */
+  forcing: boolean
+  done: boolean
+  elapsedMs: number
+}
+
 /** A run from an earlier RepoDock session that is still running (ADR-0021). */
 export type LeftoverRun = {
   runId: string
@@ -289,6 +301,7 @@ export type EventMap = {
   "process:exited": ProcessExit
   "sequence:updated": SequenceRun
   "group:updated": GroupRun
+  "app:closing": ClosingProgress
 }
 
 export function isActive(status: RunStatus) {

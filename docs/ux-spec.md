@@ -60,3 +60,7 @@
 - While a sequential run is in progress, waiting members show a clock icon and a failed member shows a warning icon.
 - The stop control stays visible while any member still has processes, because background steps outlive the run.
 - Completion, failure (with the failing repository and step) and cancellation are announced as notifications.
+
+## Closing with running processes
+
+Closing the window or quitting while processes run shows a full-window overlay (ADR-0023): "Closing RepoDock", how many processes are still being stopped, a progress bar and each run (repository · label · PID) ticked off as it exits. After the grace period it warns that the rest are force-stopped; when all are gone it shows "Everything is stopped. Closing…" and the app quits. The overlay cannot be dismissed. With nothing running the app closes immediately.

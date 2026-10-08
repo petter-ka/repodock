@@ -94,6 +94,11 @@ export const hu: Messages = {
     runHint: "A RepoDock indította — a futás a teljes folyamatfával együtt leáll.",
     killed: "{pid} PID leállítva ({count} folyamat)", killedForced: "{pid} PID nem állt le időben, kényszerítve leállítva ({count} folyamat)", stoppedRun: "A(z) {pid} PID RepoDock futásának leállítása",
   },
+  closing: {
+    title: "A RepoDock bezárása", stopping: "{count} futó folyamat leállítása, hogy semmi ne maradjon futva…",
+    cleanup: "A gyermekfolyamatok takarítása…", forcing: "Néhány folyamat nem állt le időben — kényszerített leállítás.",
+    done: "Minden leállt. Bezárás…", stopped: "Leállítva", progress: "{done} / {total} leállítva",
+  },
   leftover: {
     title: "Futva maradt folyamatok", description: "Ezeket egy korábbi, nem szabályosan leállt RepoDock munkamenet indította, és még mindig futnak. Állítsd le őket, hogy felszabaduljanak a portjaik és fájljaik.",
     unknownRepo: "Nem regisztrált repó", processes: "{count} folyamat", started: "indult: {time}", port: ":{port}",

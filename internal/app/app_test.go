@@ -591,3 +591,18 @@ func TestKillHostProcessStopsOwningRun(t *testing.T) {
 		t.Fatal("the owning run must be stopped")
 	}
 }
+
+func TestBeforeCloseQuitsAtOnceWithoutProcesses(t *testing.T) {
+	a := newTestApp(t)
+	if a.beforeClose(context.Background()) {
+		t.Fatal("closing with nothing running must not be held back")
+	}
+	a.closeState = closeStopping
+	if !a.beforeClose(context.Background()) {
+		t.Fatal("a second close while stopping must be held back")
+	}
+	a.closeState = closeDone
+	if a.beforeClose(context.Background()) {
+		t.Fatal("the final quit after stopping must go through")
+	}
+}

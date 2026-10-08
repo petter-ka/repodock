@@ -45,3 +45,4 @@ Use the following template for new architectural decisions:
 | 0020 | "JWT tool" mini app | Accepted |
 | 0021 | Marker environment variables and the leftover-process list | Accepted |
 | 0022 | A sequence holds only its steps; palette-based editor | Accepted |
+| 0023 | Stop processes behind a progress overlay when closing | Accepted |

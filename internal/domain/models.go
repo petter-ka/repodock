@@ -166,6 +166,28 @@ type LeftoverRun struct {
 	Ports []int `json:"ports"`
 }
 
+// ClosingProgress is reported while RepoDock stops its processes before
+// quitting (ADR-0023).
+type ClosingProgress struct {
+	// Runs are the runs still alive, oldest first.
+	Runs []ClosingRun `json:"runs"`
+	// Groups counts process groups that still have members (it may stay
+	// above zero briefly after every run has exited).
+	Groups int `json:"groups"`
+	// Forcing is true once the grace period is over and survivors are
+	// being killed.
+	Forcing   bool  `json:"forcing"`
+	Done      bool  `json:"done"`
+	ElapsedMs int64 `json:"elapsedMs"`
+}
+
+type ClosingRun struct {
+	RunID          string `json:"runId"`
+	Label          string `json:"label"`
+	RepositoryName string `json:"repositoryName"`
+	PID            int    `json:"pid"`
+}
+
 type RunStatus string
 
 const (

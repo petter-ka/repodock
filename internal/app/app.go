@@ -49,6 +49,9 @@ type App struct {
 	report   domain.StartupReport
 
 	shutdownOnce sync.Once
+	// closeMu guards closeState, the progress of a quit (closing.go).
+	closeMu    sync.Mutex
+	closeState closeState
 }
 
 func New() *App {
@@ -94,8 +97,8 @@ func NewWith(ws *workspacemod.Service, opts processmod.Options) *App {
 
 // Hooks returns the Wails lifecycle callbacks. They are package-level so they
 // are not exposed as frontend bindings.
-func Hooks(a *App) (onStartup func(context.Context), onShutdown func(context.Context)) {
-	return a.startup, a.shutdown
+func Hooks(a *App) (onStartup func(context.Context), onBeforeClose func(context.Context) bool, onShutdown func(context.Context)) {
+	return a.startup, a.beforeClose, a.shutdown
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -167,7 +170,7 @@ func (a *App) boot() {
 
 func (a *App) shutdown(_ context.Context) {
 	a.shutdownOnce.Do(func() {
-		a.process.Shutdown(5 * time.Second)
+		a.process.Shutdown(shutdownGrace)
 		if a.guard != nil {
 			// Descendants that left their process group carry the session
 			// marker; nothing RepoDock started may outlive it (ADR-0021).

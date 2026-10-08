@@ -26,7 +26,7 @@ func main() {
 		return
 	}
 	application := app.New()
-	onStartup, onShutdown := app.Hooks(application)
+	onStartup, onBeforeClose, onShutdown := app.Hooks(application)
 
 	err := wails.Run(&options.App{
 		Title:            "RepoDock",
@@ -38,8 +38,11 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup:  onStartup,
-		OnShutdown: onShutdown,
+		OnStartup: onStartup,
+		// Closing with running processes shows a progress overlay instead
+		// of a window that looks frozen while they stop (ADR-0023).
+		OnBeforeClose: onBeforeClose,
+		OnShutdown:    onShutdown,
 		Bind: []interface{}{
 			application,
 		},

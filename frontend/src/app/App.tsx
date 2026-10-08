@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider, useI18n } from "@/lib/i18n"
 import { readPreference, writePreference } from "@/lib/preferences"
 import { ThemeProvider } from "@/lib/theme"
+import { ClosingOverlay } from "@/modules/app-closing"
 import { LeftoverProcessesDialog } from "@/modules/leftover-processes"
 import { miniApps, useMiniApps } from "@/state/miniApps"
 import { NotificationsProvider, useNotifications } from "@/state/notifications"
@@ -43,6 +44,7 @@ function Shell() {
       <MiniAppHost />
       <LeftoverProcessesDialog />
       <Toaster />
+      <ClosingOverlay />
     </div>
   )
 }

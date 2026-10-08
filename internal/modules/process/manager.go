@@ -570,6 +570,10 @@ func (m *Manager) releaseGroup(pgid int) {
 	}
 }
 
+// LiveGroupCount returns how many process groups RepoDock started still
+// have members, including groups whose shell already exited.
+func (m *Manager) LiveGroupCount() int { return len(m.liveGroups()) }
+
 // liveGroups returns tracked groups that still have members.
 func (m *Manager) liveGroups() []int {
 	m.groupMu.Lock()

@@ -93,6 +93,11 @@ export const en = {
     runHint: "Started by RepoDock — its run will be stopped with the whole process tree.",
     killed: "PID {pid} terminated ({count} process(es))", killedForced: "PID {pid} did not exit in time and was force-killed ({count} process(es))", stoppedRun: "Stopping the RepoDock run of PID {pid}",
   },
+  closing: {
+    title: "Closing RepoDock", stopping: "Stopping {count} running process(es) so nothing is left behind…",
+    cleanup: "Cleaning up child processes…", forcing: "Some processes did not stop in time — force-stopping them.",
+    done: "Everything is stopped. Closing…", stopped: "Stopped", progress: "{done} of {total} stopped",
+  },
   leftover: {
     title: "Processes left running", description: "These were started by an earlier RepoDock session that did not shut down cleanly, and are still running. Stop them to free their ports and files.",
     unknownRepo: "Unregistered repository", processes: "{count} process(es)", started: "started {time}", port: ":{port}",
