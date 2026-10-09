@@ -51,3 +51,12 @@ class WorkspaceStore {
 }
 
 export const workspaceStore = new WorkspaceStore()
+
+export async function refreshWorkspaceAfterMutation<T>(
+  mutation: () => Promise<T>,
+  loadWorkspace: () => Promise<Workspace>,
+): Promise<T> {
+  const result = await mutation()
+  workspaceStore.setWorkspace(await loadWorkspace())
+  return result
+}

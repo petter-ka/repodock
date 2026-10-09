@@ -5,7 +5,7 @@ import { useNotifications } from "@/state/notifications"
 import { repositoryApi } from "../api"
 import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type QuickCommand, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
 import { processStore } from "../store/processStore"
-import { workspaceStore } from "../store/workspaceStore"
+import { refreshWorkspaceAfterMutation, workspaceStore } from "../store/workspaceStore"
 
 /**
  * User-intent actions for the module. Every backend failure is surfaced as
@@ -24,6 +24,9 @@ export function useRepositoryActions() {
         return undefined
       }
     }
+
+    const mutateWorkspace = <T,>(work: () => Promise<T>) =>
+      guard(() => refreshWorkspaceAfterMutation(work, repositoryApi.workspace))
 
     // Results are applied immediately as well as via events, so the UI is
     // correct even if an event is delivered late.
@@ -53,18 +56,18 @@ export function useRepositoryActions() {
         if (updated) notify(f(t.relocate.done, { name: displayName(updated), path: updated.path }), { tone: "success" })
         return updated
       },
-      remove: (repo: Repository) => guard(() => repositoryApi.removeRepository(repo.id)),
-      createGroup: (name: string) => guard(() => repositoryApi.createGroup(name)),
+      remove: (repo: Repository) => mutateWorkspace(() => repositoryApi.removeRepository(repo.id)),
+      createGroup: (name: string) => mutateWorkspace(() => repositoryApi.createGroup(name)),
       renameGroup: (id: string, name: string) => guard(() => repositoryApi.renameGroup(id, name)),
-      deleteGroup: (id: string) => guard(() => repositoryApi.deleteGroup(id)),
+      deleteGroup: (id: string) => mutateWorkspace(() => repositoryApi.deleteGroup(id)),
       setGroupCollapsed: (id: string, collapsed: boolean) => guard(() => repositoryApi.setGroupCollapsed(id, collapsed)),
       /** Set a repository's alias; blank restores the discovered name. */
       renameRepository: (repoId: string, alias: string) => guard(() => repositoryApi.renameRepository(repoId, alias)),
       /** Place a group at `index` in the sidebar (index excludes the group itself). */
       moveGroup: (groupId: string, index: number) => guard(() => repositoryApi.moveGroup(groupId, index)),
-      assign: (repoId: string, groupId: string) => guard(() => repositoryApi.assignRepository(repoId, groupId)),
+      assign: (repoId: string, groupId: string) => mutateWorkspace(() => repositoryApi.assignRepository(repoId, groupId)),
       /** Place a repository at `index` in a group (index excludes the repository itself). */
-      move: (repoId: string, groupId: string, index: number) => guard(() => repositoryApi.moveRepository(repoId, groupId, index)),
+      move: (repoId: string, groupId: string, index: number) => mutateWorkspace(() => repositoryApi.moveRepository(repoId, groupId, index)),
       setGroupRunMode: (groupId: string, mode: GroupRunMode) => guard(() => repositoryApi.setGroupRunMode(groupId, mode)),
       async runGroup(groupId: string) {
         const run = await guard(() => repositoryApi.runGroup(groupId))
