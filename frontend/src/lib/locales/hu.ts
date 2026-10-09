@@ -11,7 +11,7 @@ export const hu: Messages = {
   sidebar: {
     count: "{count} repository", add: "Repository hozzáadása", filter: "Repositoryk szűrése…", newGroup: "Új csoport",
     emptyGroup: "Ebben a csoportban nincs repository", noMatches: "Nincs találat", groupActions: "Csoport műveletek",
-    repoActions: "Repository műveletek", addHere: "Hozzáadás ehhez a csoporthoz", moveTo: "Áthelyezés csoportba", renameGroup: "Csoport átnevezése",
+    repoActions: "Repository műveletek", addHere: "Hozzáadás ehhez a csoporthoz", moveTo: "Áthelyezés csoportba", renameGroup: "Csoport átnevezése", openInVSCode: "Megnyitás VSCode-ban",
     resize: "Oldalsáv átméretezése", resizeHint: "Húzd az átméretezéshez · dupla kattintás: alaphelyzet", moveGroupUp: "Csoport feljebb", moveGroupDown: "Csoport lejjebb", dragGroup: "Húzd a csoportok átrendezéséhez", renameRepo: "Átnevezés (alias)…", folder: "mappa", moveUp: "Fel", moveDown: "Le", dropHere: "Húzd ide az áthelyezéshez", deleteGroup: "Csoport törlése", running: "{count} fut",
     runningSince: "{count} fut · legutóbbi: {label}, indult: {time}", lastRunExit: "Utolsó parancs: {label} — {status}, kilépési kód: {code} ({time})", problem: "package.json hiba",
   },

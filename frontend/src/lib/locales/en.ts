@@ -11,7 +11,7 @@ export const en = {
   sidebar: {
     count: "{count} repositories", add: "Add repository", filter: "Filter repositories…", newGroup: "New group",
     emptyGroup: "No repositories in this group", noMatches: "No matches", groupActions: "Group actions",
-    repoActions: "Repository actions", addHere: "Add repository here", moveTo: "Move to group", renameGroup: "Rename group",
+    repoActions: "Repository actions", addHere: "Add repository here", moveTo: "Move to group", renameGroup: "Rename group", openInVSCode: "Open in VSCode",
     resize: "Resize sidebar", resizeHint: "Drag to resize · double-click to reset", moveGroupUp: "Move group up", moveGroupDown: "Move group down", dragGroup: "Drag to reorder groups", renameRepo: "Rename (alias)…", folder: "folder", moveUp: "Move up", moveDown: "Move down", dropHere: "Drop here to move", deleteGroup: "Delete group", running: "{count} running",
     runningSince: "{count} running · latest: {label} since {time}", lastRunExit: "Last command: {label} — {status}, exit {code} ({time})", problem: "package.json problem",
   },

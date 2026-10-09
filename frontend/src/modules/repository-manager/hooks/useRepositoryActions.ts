@@ -46,6 +46,7 @@ export function useRepositoryActions() {
         }
       },
       refresh: (repo: Repository) => guard(() => repositoryApi.refreshRepository(repo.id)),
+      openInVSCode: (repoId: string) => guard(() => repositoryApi.openRepositoryInVSCode(repoId)),
       /** Native folder picker; "" when cancelled. */
       browseFolder: async () => (await guard(() => repositoryApi.browse())) ?? "",
       checkFolder: (path: string) => repositoryApi.checkFolder(path),

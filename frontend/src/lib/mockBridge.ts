@@ -252,6 +252,7 @@ export function createMockBackend(): Backend {
   const api: AppBinding = {
     async StartupReport() { return { workspacePath: "(browser mock)", recoveredBackup: "", warnings: [] } },
     async Workspace() { return snapshot() },
+    async OpenRepositoryInVSCode() {},
     async BrowseRepository() { return window.prompt("Mock folder path", "C:/work/new-service") ?? "" },
     async AddRepository(path, groupID) {
       const name = path.split(/[\\/]/).filter(Boolean).pop() || "repository"

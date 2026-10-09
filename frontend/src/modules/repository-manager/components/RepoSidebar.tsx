@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, CircleStop, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, CircleStop, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, Code2, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { forwardRef, useMemo, useState, type DragEvent } from "react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { PromptDialog } from "@/components/shared/PromptDialog"
@@ -501,6 +501,7 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="right">
           <DropdownMenuLabel className="max-w-56 truncate normal-case tracking-normal">{displayName(repo)}</DropdownMenuLabel>
+          <DropdownMenuItem onSelect={() => void actions.openInVSCode(repo.id)}><Code2 /> {t.sidebar.openInVSCode}</DropdownMenuItem>
           <DropdownMenuItem onSelect={onRename}><Pencil /> {t.sidebar.renameRepo}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void actions.refresh(repo)}><RefreshCw /> {t.common.refresh}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void actions.relocate(repo)}><FolderSearch /> {t.relocate.action}</DropdownMenuItem>
