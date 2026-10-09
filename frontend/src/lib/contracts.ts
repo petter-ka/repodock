@@ -238,6 +238,7 @@ export type StartupReport = { workspacePath: string; recoveredBackup: string; wa
 export type AppBinding = {
   StartupReport(): Promise<StartupReport>
   Workspace(): Promise<Workspace>
+  OpenRepositoryInVSCode(id: string): Promise<void>
   BrowseRepository(): Promise<string>
   AddRepository(path: string, groupID: string): Promise<Repository>
   RefreshRepository(id: string): Promise<Repository>

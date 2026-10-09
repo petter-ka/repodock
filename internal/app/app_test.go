@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -131,6 +132,45 @@ func TestAddRepositoryDiscoversAndAllowsDuplicates(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".env")); err != nil {
 		t.Fatal("removing a repository must not touch its files")
 	}
+}
+
+func TestOpenRepositoryInVSCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell executable as a test double")
+	}
+	a := newTestApp(t)
+	dir := filepath.Join(t.TempDir(), "repo with spaces")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := a.AddRepository(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	output := filepath.Join(t.TempDir(), "opened-path")
+	code := filepath.Join(bin, "code")
+	if err := os.WriteFile(code, []byte("#!/bin/sh\nprintf '%s' \"$1\" > \"$REPO_PATH_OUTPUT\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("REPO_PATH_OUTPUT", output)
+
+	if err := a.OpenRepositoryInVSCode(repo.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if opened, err := os.ReadFile(output); err == nil {
+			if string(opened) != repo.Path {
+				t.Fatalf("opened path = %q, want %q", opened, repo.Path)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("VS Code launcher did not receive the repository path")
 }
 
 func TestEnvironmentRoundTrip(t *testing.T) {

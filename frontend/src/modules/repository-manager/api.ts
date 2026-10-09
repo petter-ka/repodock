@@ -8,6 +8,7 @@ const api = () => getBackend().api
 export const repositoryApi = {
   startupReport: () => api().StartupReport(),
   workspace: () => api().Workspace(),
+  openRepositoryInVSCode: (id: string) => api().OpenRepositoryInVSCode(id),
   browse: () => api().BrowseRepository(),
   addRepository: (path: string, groupID = "") => api().AddRepository(path, groupID),
   refreshRepository: (id: string) => api().RefreshRepository(id),

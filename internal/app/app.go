@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -196,6 +197,20 @@ func (a *App) StartupReport() domain.StartupReport {
 }
 
 func (a *App) Workspace() domain.Workspace { return a.workspace.Snapshot() }
+
+// OpenRepositoryInVSCode opens a registered repository in Visual Studio Code.
+func (a *App) OpenRepositoryInVSCode(id string) error {
+	repo, err := a.repository(id)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("code", repo.Path)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open repository in VS Code: %w", err)
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
 
 // BrowseRepository opens the native folder picker. An empty path means the
 // user cancelled.
