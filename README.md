@@ -7,6 +7,10 @@ Native multiplatform developer command center for local Node.js repositories.
 
 RepoDock is designed for teams who have many Node.js / React / Next.js / NestJS repositories and want a fast native UI for starting, stopping, grouping and observing repository commands without opening each project individually.
 
+![RepoDock running a repository: script chips, command sequence, quick commands, process cards with PID, memory and CPU, and the live console](docs/screenshots/overview.png)
+
+<sub>All screenshots show demo data (fictional repositories). See the [tour](#tour) below for more.</sub>
+
 ## Install
 
 ### macOS (recommended)
@@ -35,6 +39,46 @@ Verify downloads against `SHA256SUMS.txt`. Builds are not code-signed yet:
 - **Windows:** SmartScreen may ask you to confirm (*More info → Run anyway*).
 
 **macOS/Linux: `command not found: npm`?** RepoDock reads the PATH of your interactive shell (including `~/.zshrc`, where nvm/fnm usually live) when it starts. Restart RepoDock after installing Node or a version manager. If your shell profile takes longer than 8 seconds to load, RepoDock falls back to common install folders (Homebrew, volta, nvm, …).
+
+## Tour
+
+### Run a whole group
+
+Start every repository of a group with one click, either one after another (stopping at the first failure) or all at once. The sidebar shows the progress, and **All repositories** merges every process and its output into one console.
+
+![A group running in parallel with its progress in the sidebar, next to the run-mode menu of another group](docs/screenshots/group-run.png)
+
+### Command sequences
+
+Build an ordered sequence per repository from its `package.json` scripts, shared global commands and custom shell commands. Foreground steps must succeed before the next one starts; background steps (dev servers, watchers) keep running.
+
+![The sequence editor while a sequence runs: one step done, one running, two pending](docs/screenshots/sequence.png)
+
+### Environment files
+
+`.env*` files are discovered per repository and edited in a drawer, as a form or as raw text. Values stay masked until you reveal them.
+
+![The environment drawer with masked values](docs/screenshots/environment.png)
+
+### Mini apps
+
+Small tools open from the rail as floating windows that never block the main view: find and kill whatever holds a port or PID, and generate or decode JWTs for local testing.
+
+![The Kill process and JWT tool mini apps floating over a running repository](docs/screenshots/mini-apps.png)
+
+### Export and import
+
+Export groups to JSON and import them on another machine. The import is reviewed before anything is added: new and already registered repositories, folders that are missing, and every shell command the file contains.
+
+![The import review dialog](docs/screenshots/import.png)
+
+### Themes and languages
+
+System, light and dark themes, in English or Hungarian.
+
+| Light theme, Hungarian | Settings |
+|---|---|
+| ![A repository in the light theme with the Hungarian interface](docs/screenshots/light-hungarian.png) | ![The settings view with theme, language, console and keyboard shortcut options](docs/screenshots/settings.png) |
 
 ## Goals
 

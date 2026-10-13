@@ -17,5 +17,6 @@ Start here when changing architecture or planning a larger feature.
 - `operations/` — observability, release and CI/CD
 - `adr/` — architecture decision records
 - `development/` — coding standards
+- `screenshots/` — README screenshots (demo data, no real repositories)
 
 Claude Code should read `CLAUDE.md` first, then these docs when implementing non-trivial changes.
