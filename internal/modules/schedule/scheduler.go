@@ -240,14 +240,40 @@ func (s *Scheduler) Statuses() []domain.GroupScheduleStatus {
 // a group started or stopped).
 func (s *Scheduler) Refresh() { s.refresh(s.now()) }
 
-// Reset forgets a group's postponed, cancelled or early stop and cancelled
-// start, e.g. after its schedule was edited.
-func (s *Scheduler) Reset(groupID string) {
+// Reset forgets the groups' postponed, cancelled or early stops and
+// cancelled starts, e.g. after their schedules were edited.
+func (s *Scheduler) Reset(groupIDs ...string) {
 	s.mu.Lock()
-	delete(s.overrides, groupID)
-	delete(s.startSkips, groupID)
+	for _, id := range groupIDs {
+		delete(s.overrides, id)
+		delete(s.startSkips, id)
+	}
 	s.mu.Unlock()
 	s.Refresh()
+}
+
+// forEachScheduled applies fn to every group with an active schedule. It
+// fails only when it failed for every group.
+func (s *Scheduler) forEachScheduled(fn func(groupID string) error) error {
+	var last error
+	done := 0
+	for _, group := range s.host.Groups() {
+		if !group.Schedule.Active() {
+			continue
+		}
+		if err := fn(group.ID); err != nil {
+			last = err
+			continue
+		}
+		done++
+	}
+	if done == 0 {
+		if last == nil {
+			last = fmt.Errorf("no group has a schedule")
+		}
+		return last
+	}
+	return nil
 }
 
 // Postpone moves the group's announced stop by minutes.
@@ -273,7 +299,11 @@ func (s *Scheduler) Skip(groupID string) error { return s.SkipNext(groupID, Kind
 
 // SkipNext cancels the group's next scheduled start or stop (kind), however
 // far ahead it is (within a week). The schedule resumes with the one after.
+// An empty groupID cancels it for every scheduled group.
 func (s *Scheduler) SkipNext(groupID, kind string) error {
+	if groupID == "" {
+		return s.forEachScheduled(func(id string) error { return s.SkipNext(id, kind) })
+	}
 	now := s.now()
 	group, ok := s.group(groupID)
 	if !ok {
@@ -303,8 +333,12 @@ func (s *Scheduler) SkipNext(groupID, kind string) error {
 	return nil
 }
 
-// Resume takes back a cancelled start or stop (kind) of the group.
+// Resume takes back a cancelled start or stop (kind) of the group; an empty
+// groupID takes it back for every group.
 func (s *Scheduler) Resume(groupID, kind string) error {
+	if groupID == "" {
+		return s.forEachScheduled(func(id string) error { return s.Resume(id, kind) })
+	}
 	switch kind {
 	case KindStart:
 		s.mu.Lock()

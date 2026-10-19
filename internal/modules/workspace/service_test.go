@@ -442,14 +442,28 @@ func TestCleanSchedule(t *testing.T) {
 	}
 }
 
-func TestSetGroupSchedulePersists(t *testing.T) {
+func TestSetGroupSchedulesTouchesOnlyTheChosenGroups(t *testing.T) {
 	s := newTemp(t)
 	if _, err := s.Load(); err != nil {
 		t.Fatal(err)
 	}
-	id := s.Snapshot().Groups[0].ID
-	if _, err := s.SetGroupSchedule(id, domain.GroupSchedule{Days: []int{1, 2, 3, 4, 5}, StopEnabled: true, StopAt: "18:30"}); err != nil {
+	first := s.Snapshot().Groups[0].ID
+	second, _ := s.CreateGroup("Second")
+	third, _ := s.CreateGroup("Third")
+	own := domain.GroupSchedule{Days: []int{6}, StartEnabled: true, StartAt: "10:00"}
+	if _, err := s.SetGroupSchedules([]string{third.ID}, own); err != nil {
 		t.Fatal(err)
+	}
+	shared := domain.GroupSchedule{Days: []int{1, 2, 3, 4, 5}, StopEnabled: true, StopAt: "18:30"}
+	groups, err := s.SetGroupSchedules([]string{first, second.ID, first}, shared)
+	if err != nil || len(groups) != 2 {
+		t.Fatalf("groups = %#v, %v", groups, err)
+	}
+	if _, err := s.SetGroupSchedules(nil, shared); err == nil {
+		t.Fatal("no group must be rejected")
+	}
+	if _, err := s.SetGroupSchedules([]string{"missing"}, shared); err == nil {
+		t.Fatal("an unknown group must be rejected")
 	}
 	if err := s.Save(); err != nil {
 		t.Fatal(err)
@@ -458,7 +472,17 @@ func TestSetGroupSchedulePersists(t *testing.T) {
 	if _, err := reloaded.Load(); err != nil {
 		t.Fatal(err)
 	}
-	if g, _ := reloaded.Group(id); !g.Schedule.StopEnabled || g.Schedule.StopAt != "18:30" || len(g.Schedule.Days) != 5 {
-		t.Fatalf("schedule = %#v", g.Schedule)
+	for _, id := range []string{first, second.ID} {
+		if g, _ := reloaded.Group(id); g.Schedule.StopAt != "18:30" || !g.Schedule.StopEnabled {
+			t.Fatalf("%s schedule = %#v", id, g.Schedule)
+		}
+	}
+	if g, _ := reloaded.Group(third.ID); g.Schedule.StartAt != "10:00" || g.Schedule.StopEnabled {
+		t.Fatalf("an unchosen group changed: %#v", g.Schedule)
+	}
+	// Each group keeps its own copy.
+	_, _ = reloaded.SetGroupSchedules([]string{first}, domain.GroupSchedule{Days: []int{0}})
+	if g, _ := reloaded.Group(second.ID); len(g.Schedule.Days) != 5 {
+		t.Fatalf("schedules are shared: %#v", g.Schedule)
 	}
 }

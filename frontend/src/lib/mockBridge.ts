@@ -11,7 +11,10 @@ const ZERO = "0001-01-01T00:00:00Z"
 const now = () => new Date().toISOString()
 const uid = () => crypto.randomUUID()
 
+const scheduleOf = (group: Group): GroupSchedule => group.schedule ?? noSchedule()
 const noSchedule = (): GroupSchedule => ({ days: [], startEnabled: false, startAt: "", stopEnabled: false, stopAt: "" })
+/** Mirrors domain.GroupSchedule.Active. */
+const scheduleActive = (s: GroupSchedule | null | undefined): s is GroupSchedule => !!s && (s.startEnabled || s.stopEnabled) && s.days.length > 0
 
 function seedWorkspace(): Workspace {
   const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[], stack: string[] = [], deps = 0, devDeps = 0): Repository => ({
@@ -715,20 +718,25 @@ export function createMockBackend(): Backend {
       findRepo(repoID).continuous = continuous
       changed()
     },
-    async SetGroupSchedule(groupID, schedule) {
-      const group = workspace.groups.find((g) => g.id === groupID)
-      if (!group) throw "group not found"
+    async SetGroupSchedules(groupIDs, schedule) {
       const clock = /^([01]?\d|2[0-3]):[0-5]\d$/
+      const on = schedule.startEnabled || schedule.stopEnabled
+      const ids = [...new Set(groupIDs)]
+      if (ids.length === 0) throw "pick at least one group for the schedule"
+      const groups = ids.map((id) => workspace.groups.find((g) => g.id === id))
+      if (groups.some((g) => !g)) throw "group not found"
       if (schedule.startEnabled && !clock.test(schedule.startAt)) throw "pick a start time"
       if (schedule.stopEnabled && !clock.test(schedule.stopAt)) throw "pick a stop time"
-      if ((schedule.startEnabled || schedule.stopEnabled) && schedule.days.length === 0) throw "pick at least one day for the schedule"
+      if (on && schedule.days.length === 0) throw "pick at least one day for the schedule"
       if (schedule.startEnabled && schedule.stopEnabled && schedule.startAt === schedule.stopAt) throw "start and stop times must differ"
-      group.schedule = { ...structuredClone(schedule), days: [...new Set(schedule.days)].sort() }
-      stopOverrides.delete(groupID)
-      startSkips.delete(groupID)
+      for (const group of groups) {
+        group!.schedule = { ...structuredClone(schedule), days: [...new Set(schedule.days)].sort() }
+        stopOverrides.delete(group!.id)
+        startSkips.delete(group!.id)
+      }
       changed()
       evaluateSchedules()
-      return structuredClone(group)
+      return structuredClone(groups as Group[])
     },
     async ScheduledStops() { return structuredClone(pendingStops) },
     async PostponeScheduledStop(groupID, minutes) {
@@ -740,6 +748,12 @@ export function createMockBackend(): Backend {
     async SkipScheduledStop(groupID) { await api.SkipNextScheduled(groupID, "stop") },
     async ScheduleStatuses() { return computeStatuses() },
     async SkipNextScheduled(groupID, kind) {
+      if (!groupID) {
+        const ids = workspace.groups.filter((g) => scheduleActive(g.schedule)).map((g) => g.id)
+        const results = await Promise.allSettled(ids.map((id) => api.SkipNextScheduled(id, kind)))
+        if (!results.some((r) => r.status === "fulfilled")) throw `no scheduled ${kind} is coming up`
+        return
+      }
       const status = computeStatuses().find((s) => s.groupId === groupID)
       if (kind === "start") {
         if (!status || status.nextStart === ZERO) throw "no scheduled start is coming up for this group"
@@ -752,6 +766,10 @@ export function createMockBackend(): Backend {
       evaluateSchedules()
     },
     async ResumeScheduled(groupID, kind) {
+      if (!groupID) {
+        for (const g of workspace.groups) await api.ResumeScheduled(g.id, kind)
+        return
+      }
       if (kind === "start") startSkips.delete(groupID)
       else if (stopOverrides.get(groupID)?.skipped) stopOverrides.delete(groupID)
       evaluateSchedules()
@@ -772,7 +790,7 @@ export function createMockBackend(): Backend {
 
   // Simulated scheduler (ADR-0025): announces stops of running groups within
   // 30 minutes and fires them. `?stopIn=<minutes>` moves the first group's
-  // stop that close to now (and runs the group) so the countdown can be
+  // stop that close to now (and runs the scheduled groups) so the countdown can be
   // previewed; `?launch=<path>` simulates `repodock <path>`.
   const stopOverrides = new Map<string, { stopAt: Date; skipped: boolean; done: boolean; occurrence: string }>()
   const startSkips = new Map<string, string>()
@@ -789,8 +807,8 @@ export function createMockBackend(): Backend {
   }
   // Mirrors Scheduler.upcomingStart/upcomingStop.
   const computeStatuses = (): GroupScheduleStatus[] => workspace.groups.flatMap((group) => {
-    const s = group.schedule
-    if (!s || !s.days.length) return []
+    const s = scheduleActive(group.schedule) ? group.schedule : null
+    if (!s) return []
     const nowDate = new Date()
     const start = s.startEnabled ? nextAt(s.days, s.startAt, nowDate) : null
     const override = stopOverrides.get(group.id)
@@ -818,7 +836,9 @@ export function createMockBackend(): Backend {
   const stopIn = Number(params.get("stopIn"))
   if (stopIn > 0 && workspace.groups[0]) {
     const at = new Date(Date.now() + stopIn * 60_000)
-    workspace.groups[0].schedule = { days: [0, 1, 2, 3, 4, 5, 6], startEnabled: false, startAt: "09:00", stopEnabled: true, stopAt: `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` }
+    const stopAt = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`
+    // The first two groups stop together so the shared countdown shows.
+    for (const group of workspace.groups.slice(0, 2)) group.schedule = { ...scheduleOf(group), days: [0, 1, 2, 3, 4, 5, 6], stopEnabled: true, stopAt }
   }
   const launchFolders = params.getAll("launch")
   const groupRunning = (group: Group) => group.repositoryIds.reduce((n, id) => n + [...runs.values()].filter((r) => r.repositoryId === id && (r.status === "running" || r.status === "stopping")).length, 0)
@@ -826,7 +846,7 @@ export function createMockBackend(): Backend {
     const nowMs = Date.now()
     const next: ScheduledStop[] = []
     for (const group of workspace.groups) {
-      const schedule = group.schedule
+      const schedule = scheduleActive(group.schedule) ? group.schedule : null
       const override = stopOverrides.get(group.id)
       let stopAt: Date | null = null
       let postponed = false
@@ -861,7 +881,7 @@ export function createMockBackend(): Backend {
   window.setInterval(evaluateSchedules, 2000)
   if (launchFolders.length) window.setTimeout(() => emit("launch:folder", null), 300)
   // The preview stop only shows while the group runs, so start it.
-  if (stopIn > 0 && workspace.groups[0]) window.setTimeout(() => void api.RunGroup(workspace.groups[0].id).catch(() => undefined), 300)
+  if (stopIn > 0) window.setTimeout(() => workspace.groups.filter((g) => scheduleActive(g.schedule)).forEach((g) => void api.RunGroup(g.id).catch(() => undefined)), 300)
 
   return {
     api,

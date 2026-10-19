@@ -1,5 +1,6 @@
 // Pure helpers for group schedules (ADR-0025). The backend decides when a
 // schedule fires; these only describe and preview it.
+import { format } from "@/lib/i18n"
 import type { Messages } from "@/lib/locales/en"
 export { formatCountdown } from "@/lib/utils"
 import type { Group, GroupSchedule } from "./domain"
@@ -28,6 +29,14 @@ export function scheduleOf(group: Pick<Group, "schedule">): GroupSchedule {
 
 export function isScheduleActive(s: GroupSchedule) {
   return (s.startEnabled || s.stopEnabled) && s.days.length > 0
+}
+
+/** Two schedules that start and stop the same way (times of parts that are off don't count). */
+export function sameSchedule(a: GroupSchedule, b: GroupSchedule) {
+  if (!isScheduleActive(a) || !isScheduleActive(b)) return isScheduleActive(a) === isScheduleActive(b)
+  return a.startEnabled === b.startEnabled && a.stopEnabled === b.stopEnabled
+    && (!a.startEnabled || a.startAt === b.startAt) && (!a.stopEnabled || a.stopAt === b.stopAt)
+    && [...a.days].sort().join() === [...b.days].sort().join()
 }
 
 const sameDays = (a: number[], b: number[]) => a.length === b.length && [...a].sort().every((d, i) => d === [...b].sort()[i])
@@ -89,4 +98,13 @@ export function formatIn(ms: number) {
   const h = Math.floor(minutes / 60)
   if (h < 48) return `${h}h ${String(minutes % 60).padStart(2, "0")}m`
   return `${Math.floor(h / 24)}d ${h % 24}h`
+}
+
+/** "Weekdays · starts 09:00 · stops 18:00", or "No schedule". */
+export function describeSchedule(s: GroupSchedule, t: Messages, locale: string) {
+  if (!isScheduleActive(s)) return t.schedule.off
+  return format(t.schedule.summary, {
+    days: describeDays(s.days, t, locale),
+    parts: [s.startEnabled && format(t.schedule.starts, { time: s.startAt }), s.stopEnabled && format(t.schedule.stops, { time: s.stopAt })].filter(Boolean).join(" · "),
+  })
 }

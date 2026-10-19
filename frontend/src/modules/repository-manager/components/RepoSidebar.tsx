@@ -21,7 +21,7 @@ import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
 import { latestRunHealth, type RepoHealth } from "../repoStatus"
 import { isNoopSlot, landingIndex, slotFromPointer } from "../reorder"
-import { describeDays, isScheduleActive, scheduleOf } from "../schedule"
+import { describeSchedule, isScheduleActive, scheduleOf } from "../schedule"
 import { GlobalCommandsDialog } from "./GlobalCommandsDialog"
 import { ScheduleDialog } from "./ScheduleDialog"
 import { ScheduleMenuItems } from "./ScheduleNext"
@@ -59,7 +59,8 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   const { workspace, selectedRepoId } = useWorkspaceState()
   const version = useProcessVersion()
   const [query, setQuery] = useState("")
-  const [scheduleGroupId, setScheduleGroupId] = useState<string | null>(null)
+  // Groups ticked when the schedule dialog opens; null = closed.
+  const [scheduleFor, setScheduleFor] = useState<string[] | null>(null)
   useScheduleVersion()
   const [dialog, setDialog] = useState<DialogState>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
@@ -85,6 +86,13 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   }, [version, workspace.repositories])
 
   const totalRunning = [...running.values()].reduce((sum, n) => sum + n, 0)
+  // Every group has its own schedule; the header button covers them all.
+  const scheduledGroups = workspace.groups.filter((g) => isScheduleActive(scheduleOf(g)))
+  const scheduleActive = scheduledGroups.length > 0
+  const scheduleText = f(t.schedule.scheduledCount, { count: scheduledGroups.length, total: workspace.groups.length })
+  const scheduledStatuses = scheduledGroups.flatMap((g) => scheduleStore.status(g.id) ?? [])
+  const anyCancelledAll = scheduledStatuses.some((status) => status.startSkipped || status.stopSkipped)
+  const allGroupIds = workspace.groups.map((g) => g.id)
   const byId = useMemo(() => new Map(workspace.repositories.map((repo) => [repo.id, repo])), [workspace.repositories])
   const needle = query.trim().toLowerCase()
   const matches = (repo: Repository) => !needle || `${repo.alias} ${repo.name} ${repo.path}`.toLowerCase().includes(needle)
@@ -170,6 +178,25 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
             <p className="text-xs text-muted-foreground">{f(t.sidebar.count, { count: workspace.repositories.length })}</p>
           </div>
           <div className="flex items-center gap-1.5">
+          {scheduleActive ? (
+            <DropdownMenu>
+              <Tooltip label={`${t.schedule.button} · ${scheduleText}`}>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" aria-label={`${t.schedule.button}: ${scheduleText}`} className={cn(anyCancelledAll ? "text-warning" : "text-primary")}>
+                    {anyCancelledAll ? <AlarmClockOff /> : <AlarmClock />}
+                  </Button>
+                </DropdownMenuTrigger>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>{scheduleText}</DropdownMenuLabel>
+                <ScheduleMenuItems group={null} statuses={scheduledStatuses} actions={actions} onEdit={() => setScheduleFor(allGroupIds)} editLabel={t.schedule.setSchedule} />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Tooltip label={t.schedule.button}>
+              <Button size="icon" variant="ghost" aria-label={t.schedule.button} className="text-muted-foreground" onClick={() => setScheduleFor(allGroupIds)}><AlarmClock /></Button>
+            </Tooltip>
+          )}
           <DropdownMenu>
             <Tooltip label={t.transfer.menu}>
               <DropdownMenuTrigger asChild>
@@ -240,12 +267,9 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
           const dropSlot = drag?.kind === "repo" && drop?.kind === "repo" && drop.groupId === group.id && !isNoopSlot(drop.slot, drag.groupId === group.id ? drag.from : -1) ? drop.slot : null
           const lastGroup = groupIndex === workspace.groups.length - 1
           const skipped = new Set(group.skippedRepositoryIds ?? [])
-          const schedule = scheduleOf(group)
-          const scheduled = isScheduleActive(schedule)
-          const scheduleText = scheduled ? f(t.schedule.summary, {
-            days: describeDays(schedule.days, t, locale),
-            parts: [schedule.startEnabled && f(t.schedule.starts, { time: schedule.startAt }), schedule.stopEnabled && f(t.schedule.stops, { time: schedule.stopAt })].filter(Boolean).join(" · "),
-          }) : ""
+          const groupSchedule = scheduleOf(group)
+          const scheduled = isScheduleActive(groupSchedule)
+          const groupScheduleText = describeSchedule(groupSchedule, t, locale)
           const scheduleStatus = scheduleStore.status(group.id)
           const anyCancelled = !!scheduleStatus && (scheduleStatus.startSkipped || scheduleStatus.stopSkipped)
           // Dropping a repository anywhere on the section but an item (header,
@@ -287,10 +311,10 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                 </button>
                 {scheduled && (
                   <DropdownMenu>
-                    <Tooltip label={scheduleText}>
+                    <Tooltip label={groupScheduleText}>
                       <DropdownMenuTrigger asChild>
                         <button
-                          aria-label={`${t.schedule.menu} ${scheduleText}`}
+                          aria-label={`${t.schedule.menu} ${groupScheduleText}`}
                           className={cn(
                             "flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent",
                             anyCancelled ? "text-warning" : "text-primary/80 hover:text-primary",
@@ -301,8 +325,8 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                       </DropdownMenuTrigger>
                     </Tooltip>
                     <DropdownMenuContent align="start" className="w-72">
-                      <DropdownMenuLabel>{scheduleText}</DropdownMenuLabel>
-                      <ScheduleMenuItems group={group} status={scheduleStatus} actions={actions} onEdit={() => setScheduleGroupId(group.id)} />
+                      <DropdownMenuLabel>{groupScheduleText}</DropdownMenuLabel>
+                      <ScheduleMenuItems group={group} statuses={scheduleStatus ? [scheduleStatus] : []} actions={actions} onEdit={() => setScheduleFor([group.id])} />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -374,9 +398,9 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                         ))}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
-                    <DropdownMenuItem onSelect={() => setScheduleGroupId(group.id)}>
+                    <DropdownMenuItem onSelect={() => setScheduleFor([group.id])}>
                       <AlarmClock /> {t.schedule.menu}
-                      {scheduled && <span className="ml-auto max-w-32 truncate text-[11px] text-muted-foreground">{scheduleText}</span>}
+                      <span className="ml-auto max-w-36 truncate pl-2 text-[11px] text-muted-foreground">{groupScheduleText}</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => void actions.addRepository(group.id)}><Plus /> {t.sidebar.addHere}</DropdownMenuItem>
@@ -440,7 +464,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
 
       <ImportDialog preview={importPreview} actions={actions} onClose={() => setImportPreview(null)} />
       <GlobalCommandsDialog open={globalsOpen} actions={actions} onOpenChange={setGlobalsOpen} />
-      <ScheduleDialog group={workspace.groups.find((g) => g.id === scheduleGroupId) ?? null} actions={actions} onOpenChange={(open) => { if (!open) setScheduleGroupId(null) }} />
+      <ScheduleDialog groupIds={scheduleFor} actions={actions} onOpenChange={(open) => { if (!open) setScheduleFor(null) }} />
       <PromptDialog
         open={dialog?.kind === "createGroup" || dialog?.kind === "renameGroup"}
         title={dialog?.kind === "renameGroup" ? t.groupDialog.renameTitle : t.groupDialog.createTitle}

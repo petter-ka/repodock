@@ -27,8 +27,9 @@ import { BarList, ChartCard, Donut, Legend, StackedBars, StatTile, swatch, type 
 export function Dashboard({ workspace, actions }: { workspace: Workspace; actions: RepositoryActions }) {
   const { t, f } = useI18n()
   const data = useMemo(() => computeDashboard(workspace), [workspace])
-  const [scheduleGroupId, setScheduleGroupId] = useState<string | null>(null)
-  const scheduleGroup = workspace.groups.find((g) => g.id === scheduleGroupId) ?? null
+  // Groups ticked when the schedule dialog opens; null = closed.
+  const [scheduleFor, setScheduleFor] = useState<string[] | null>(null)
+  const allGroupIds = workspace.groups.map((g) => g.id)
   const { totals } = data
   const percent = (n: number, of: number) => (of ? Math.round((n / of) * 100) : 0)
 
@@ -96,7 +97,7 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
               })}
             </dl>
           </ChartCard>
-          <WeekChart className="xl:col-span-3" groups={data.groups} onSchedule={setScheduleGroupId} />
+          <WeekChart className="xl:col-span-3" groups={data.groups} onSchedule={(groupIds) => setScheduleFor(groupIds ?? allGroupIds)} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -154,7 +155,7 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
         <section>
           <h2 className="mb-3 mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.dashboard.groupsTitle}</h2>
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-            {data.groups.map((stats) => <GroupCard key={stats.group.id} stats={stats} actions={actions} onSchedule={() => setScheduleGroupId(stats.group.id)} />)}
+            {data.groups.map((stats) => <GroupCard key={stats.group.id} stats={stats} actions={actions} onSchedule={() => setScheduleFor([stats.group.id])} />)}
           </div>
         </section>
 
@@ -180,7 +181,7 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
           )}
         </section>
       </div>
-      <ScheduleDialog group={scheduleGroup} actions={actions} onOpenChange={(open) => { if (!open) setScheduleGroupId(null) }} />
+      <ScheduleDialog groupIds={scheduleFor} actions={actions} onOpenChange={(open) => { if (!open) setScheduleFor(null) }} />
     </div>
   )
 }
@@ -190,7 +191,8 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
  * runs by itself in its colour; a start without a stop fades out, a stop
  * without a start fades in. The current time is marked on today's row.
  */
-function WeekChart({ groups, onSchedule, className }: { groups: GroupStats[]; onSchedule: (groupId: string) => void; className?: string }) {
+/** `onSchedule()` opens the dialog for every group, `onSchedule([id])` for one. */
+function WeekChart({ groups, onSchedule, className }: { groups: GroupStats[]; onSchedule: (groupIds?: string[]) => void; className?: string }) {
   const { t, f, locale } = useI18n()
   const scheduled = groups.filter((g) => g.scheduled)
   const [now, setNow] = useState(() => new Date())
@@ -213,6 +215,7 @@ function WeekChart({ groups, onSchedule, className }: { groups: GroupStats[]; on
       className={className}
       title={t.dashboard.week}
       hint={t.dashboard.weekHint}
+      action={scheduled.length > 0 ? <Button size="xs" variant="ghost" onClick={() => onSchedule()}><AlarmClock /> {t.schedule.setSchedule}</Button> : undefined}
       table={{
         columns: [t.launch.group, t.schedule.days, t.schedule.start, t.schedule.stop],
         rows: scheduled.map((g) => [g.group.name, describeDays(g.schedule.days, t, locale), g.schedule.startEnabled ? g.schedule.startAt : "—", g.schedule.stopEnabled ? g.schedule.stopAt : "—"]),
@@ -222,7 +225,7 @@ function WeekChart({ groups, onSchedule, className }: { groups: GroupStats[]; on
         <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
           <Clock className="size-6 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">{t.dashboard.noSchedules}</p>
-          {groups[0] && <Button size="sm" variant="outline" onClick={() => onSchedule(groups[0].group.id)}><AlarmClock /> {t.dashboard.setSchedule}</Button>}
+          <Button size="sm" variant="outline" onClick={() => onSchedule()}><AlarmClock /> {t.dashboard.setSchedule}</Button>
         </div>
       ) : (
         <>
@@ -273,7 +276,7 @@ function WeekChart({ groups, onSchedule, className }: { groups: GroupStats[]; on
           <ul className="mt-auto flex flex-wrap gap-x-4 gap-y-1.5 pt-4 text-xs text-muted-foreground">
             {scheduled.map((g) => (
               <li key={g.group.id}>
-                <button onClick={() => onSchedule(g.group.id)} className="flex items-center gap-1.5 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                <button onClick={() => onSchedule([g.group.id])} className="flex items-center gap-1.5 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
                   <span className="size-2.5 rounded-[3px]" style={{ backgroundColor: g.color }} />
                   {g.group.name}
                 </button>
@@ -378,7 +381,7 @@ function GroupCard({ stats, actions, onSchedule }: { stats: GroupStats; actions:
       <footer className="mt-auto flex items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
         <AlarmClock className={cn("size-3.5 shrink-0", scheduled && "text-primary")} />
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {!scheduled ? t.dashboard.noSchedule
+          {!scheduled ? t.schedule.off
             : events.length === 0 ? t.schedule.nextNothing
               : events.map((event) => <NextEventChip key={event.kind} group={group} {...event} actions={actions} />)}
         </div>

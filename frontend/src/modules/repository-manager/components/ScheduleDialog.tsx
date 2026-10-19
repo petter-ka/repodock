@@ -1,56 +1,75 @@
-import { AlarmClock, Play, Square } from "lucide-react"
+import { AlarmClock, AlertTriangle, Check, Play, Square } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import type { Group, GroupSchedule } from "../domain"
+import { seriesColor } from "../dashboard"
+import type { GroupSchedule } from "../domain"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
+import { useWorkspaceState } from "../hooks/useStores"
 import {
-  DAY_ORDER, DAY_PRESETS, WARNING_LEAD_MINUTES, dayPreset, emptySchedule, formatIn, formatWhen, nextEvents, parseClock, scheduleOf, weekdayName, type DayPreset,
+  DAY_ORDER, DAY_PRESETS, WARNING_LEAD_MINUTES, dayPreset, describeSchedule, emptySchedule, formatIn, formatWhen, isScheduleActive, nextEvents, parseClock,
+  sameSchedule, scheduleOf, weekdayName, type DayPreset,
 } from "../schedule"
 
-/** Edits when a group starts and stops by itself (ADR-0025). */
-export function ScheduleDialog({ group, actions, onOpenChange }: {
-  group: Group | null
+/**
+ * Sets the start/stop schedule of the ticked groups (ADR-0025). Every group
+ * keeps its own schedule: saving copies these settings to the ticked groups
+ * only. `groupIds` are ticked when the dialog opens (null = closed).
+ */
+export function ScheduleDialog({ groupIds, actions, onOpenChange }: {
+  groupIds: string[] | null
   actions: RepositoryActions
   onOpenChange: (open: boolean) => void
 }) {
   const { t, f, locale } = useI18n()
+  const { workspace } = useWorkspaceState()
   const [draft, setDraft] = useState<GroupSchedule>(emptySchedule)
+  const [ticked, setTicked] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   // Re-render the "next start in …" preview every minute.
   const [now, setNow] = useState(() => new Date())
+  const open = groupIds !== null
 
   useEffect(() => {
-    if (!group) return
-    const current = scheduleOf(group)
-    // A group that never had a schedule starts from weekday defaults.
-    setDraft(current.days.length || current.startEnabled || current.stopEnabled ? current : emptySchedule())
+    if (!groupIds) return
+    setTicked(groupIds)
+    // Start from the ticked groups' schedule when they share one, else from
+    // weekday defaults.
+    const active = workspace.groups.filter((g) => groupIds.includes(g.id)).map(scheduleOf).filter(isScheduleActive)
+    // A new schedule starts with both parts on (weekdays 09:00–18:00), so
+    // setting one up is just picking groups and saving.
+    setDraft(active.length > 0 && active.every((s) => sameSchedule(s, active[0])) ? active[0] : { ...emptySchedule(), startEnabled: true, stopEnabled: true })
     setNow(new Date())
     const timer = window.setInterval(() => setNow(new Date()), 30_000)
     return () => window.clearInterval(timer)
-  }, [group])
+    // The draft is taken when the dialog opens, not on every workspace change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupIds])
 
   const patch = (next: Partial<GroupSchedule>) => setDraft((d) => ({ ...d, ...next }))
+  const chosen = workspace.groups.filter((g) => ticked.includes(g.id))
+  const toggleGroup = (id: string) => setTicked((current) => (current.includes(id) ? current.filter((g) => g !== id) : [...current, id]))
+  // Ticked groups whose own, different schedule would be overwritten.
+  const replaced = chosen.filter((g) => isScheduleActive(scheduleOf(g)) && !sameSchedule(scheduleOf(g), draft))
   const toggleDay = (day: number) => patch({ days: draft.days.includes(day) ? draft.days.filter((d) => d !== day) : [...draft.days, day].sort() })
   const preset = dayPreset(draft.days)
   const anyOn = draft.startEnabled || draft.stopEnabled
-  const error = !anyOn ? null
+  const error = chosen.length === 0 ? t.schedule.pickGroup
+    : !anyOn ? null
     : draft.days.length === 0 ? t.schedule.noDays
       : draft.startEnabled && draft.stopEnabled && draft.startAt === draft.stopAt ? t.schedule.sameTime
         : (draft.startEnabled && !parseClock(draft.startAt)) || (draft.stopEnabled && !parseClock(draft.stopAt)) ? t.schedule.pickTime
           : null
-  const saved = group ? scheduleOf(group) : null
-  const wasOn = !!saved && (saved.startEnabled || saved.stopEnabled)
+  const anyChosenOn = chosen.some((g) => isScheduleActive(scheduleOf(g)))
   const next = useMemo(() => nextEvents(draft, now), [draft, now])
 
   const save = async (schedule: GroupSchedule) => {
-    if (!group) return
     setBusy(true)
     try {
-      if (await actions.saveSchedule(group, schedule)) onOpenChange(false)
+      if (await actions.saveSchedule(chosen.map((g) => g.id), schedule)) onOpenChange(false)
     } finally {
       setBusy(false)
     }
@@ -64,8 +83,8 @@ export function ScheduleDialog({ group, actions, onOpenChange }: {
   ]
 
   return (
-    <Dialog open={!!group} onOpenChange={onOpenChange}>
-      <DialogContent closeLabel={t.common.close} className="max-w-lg">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent closeLabel={t.common.close} className="thin-scrollbar max-h-[92vh] max-w-lg overflow-y-auto">
         <form
           className="grid gap-5"
           onSubmit={(event) => {
@@ -74,9 +93,50 @@ export function ScheduleDialog({ group, actions, onOpenChange }: {
           }}
         >
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><AlarmClock className="size-4 text-primary" /> {f(t.schedule.title, { name: group?.name ?? "" })}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><AlarmClock className="size-4 text-primary" /> {t.schedule.title}</DialogTitle>
             <DialogDescription>{t.schedule.description}</DialogDescription>
           </DialogHeader>
+
+          <fieldset className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <legend className="flex-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.schedule.applyTo}</legend>
+              <Button type="button" size="xs" variant="ghost" onClick={() => setTicked(workspace.groups.map((g) => g.id))}>{t.schedule.selectAll}</Button>
+              <Button type="button" size="xs" variant="ghost" onClick={() => setTicked([])}>{t.schedule.selectNone}</Button>
+            </div>
+            <ul className="thin-scrollbar grid max-h-48 gap-1 overflow-y-auto">
+              {workspace.groups.map((group, index) => {
+                const on = ticked.includes(group.id)
+                const own = scheduleOf(group)
+                return (
+                  <li key={group.id}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      onClick={() => toggleGroup(group.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring",
+                        on ? "border-primary/40 bg-primary/10" : "border-border hover:bg-accent/60",
+                      )}
+                    >
+                      <span className={cn("flex size-4 shrink-0 items-center justify-center rounded border", on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
+                        {on && <Check className="size-3" />}
+                      </span>
+                      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: seriesColor(index) }} />
+                      <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
+                      <span className={cn("shrink-0 truncate text-[11px]", isScheduleActive(own) ? "text-muted-foreground" : "text-muted-foreground/60")}>{describeSchedule(own, t, locale)}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="text-[11px] text-muted-foreground">{t.schedule.groupsHint}</p>
+            {replaced.length > 0 && (
+              <p className="flex items-start gap-1.5 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {f(t.schedule.replaces, { names: replaced.map((g) => g.name).join(", ") })}
+              </p>
+            )}
+          </fieldset>
 
           <fieldset className="grid gap-2.5">
             <legend className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.schedule.days}</legend>
@@ -167,13 +227,13 @@ export function ScheduleDialog({ group, actions, onOpenChange }: {
           <p aria-live="polite" className={cn("-mt-2 min-h-4 text-xs", error ? "text-destructive" : "text-muted-foreground")}>{error ?? (anyOn ? "" : t.schedule.nothingOn)}</p>
 
           <DialogFooter className="items-center">
-            {wasOn ? (
+            {anyChosenOn ? (
               <Button type="button" variant="ghost" className="mr-auto text-muted-foreground" disabled={busy} onClick={() => void save({ ...draft, startEnabled: false, stopEnabled: false })}>
-                {t.schedule.turnOff}
+                {t.schedule.turnOffFor}
               </Button>
             ) : null}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t.common.cancel}</Button>
-            <Button type="submit" disabled={busy || !!error}>{t.common.save}</Button>
+            <Button type="submit" disabled={busy || !!error}>{f(t.schedule.saveFor, { count: chosen.length })}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

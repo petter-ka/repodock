@@ -480,20 +480,38 @@ func (s *Service) SetRepositoryContinuous(repoID string, continuous bool) error 
 	return err
 }
 
-// SetGroupSchedule replaces a group's schedule after validating it.
-func (s *Service) SetGroupSchedule(id string, schedule domain.GroupSchedule) (domain.Group, error) {
+// SetGroupSchedules gives every listed group the same schedule (each keeps
+// its own copy, edited separately later). Groups not listed keep theirs.
+func (s *Service) SetGroupSchedules(groupIDs []string, schedule domain.GroupSchedule) ([]domain.Group, error) {
 	clean, err := CleanSchedule(schedule)
 	if err != nil {
-		return domain.Group{}, err
+		return nil, err
+	}
+	ids := []string{}
+	for _, id := range groupIDs {
+		if !containsString(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("pick at least one group for the schedule")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	i := s.groupIndex(id)
-	if i < 0 {
-		return domain.Group{}, fmt.Errorf("group %s: %w", id, ErrNotFound)
+	for _, id := range ids {
+		if s.groupIndex(id) < 0 {
+			return nil, fmt.Errorf("group %s: %w", id, ErrNotFound)
+		}
 	}
-	s.state.Groups[i].Schedule = clean
-	return cloneGroup(s.state.Groups[i]), nil
+	out := make([]domain.Group, 0, len(ids))
+	for _, id := range ids {
+		i := s.groupIndex(id)
+		copied := clean
+		copied.Days = append([]int{}, clean.Days...)
+		s.state.Groups[i].Schedule = copied
+		out = append(out, cloneGroup(s.state.Groups[i]))
+	}
+	return out, nil
 }
 
 // CleanSchedule validates a schedule: days are weekday numbers (0 = Sunday)

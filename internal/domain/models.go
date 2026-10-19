@@ -21,12 +21,13 @@ type Group struct {
 	// SkippedRepositoryIDs are members that "Run group" leaves out; they can
 	// still be run on their own (ADR-0024).
 	SkippedRepositoryIDs []string `json:"skippedRepositoryIds"`
-	// Schedule starts and stops the group at set times (ADR-0025).
+	// Schedule starts and stops this group at set times (ADR-0025).
 	Schedule GroupSchedule `json:"schedule"`
 }
 
-// GroupSchedule runs a group at fixed local times on chosen weekdays. A
-// scheduled stop is announced with a countdown before it happens.
+// GroupSchedule starts and stops one group at fixed local times on chosen
+// weekdays (ADR-0025). Every group has its own; the dialog can apply the
+// same settings to several groups at once.
 type GroupSchedule struct {
 	// Days are the weekdays the schedule applies on: 0 = Sunday … 6 =
 	// Saturday, sorted and unique.

@@ -122,7 +122,7 @@ export type Repository = {
 
 export type GroupRunMode = "sequential" | "parallel"
 
-/** Starts/stops a group at local times on chosen weekdays (ADR-0025). */
+/** Starts/stops one group at local times on chosen weekdays; every group has its own (ADR-0025). */
 export type GroupSchedule = {
   /** weekdays, 0 = Sunday … 6 = Saturday */
   days: number[]
@@ -316,12 +316,14 @@ export type AppBinding = {
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
   SetRepositorySkipped(repoID: string, skipped: boolean): Promise<void>
   SetRepositoryContinuous(repoID: string, continuous: boolean): Promise<void>
-  SetGroupSchedule(groupID: string, schedule: GroupSchedule): Promise<Group>
+  /** gives every listed group the same schedule; others keep theirs */
+  SetGroupSchedules(groupIDs: string[], schedule: GroupSchedule): Promise<Group[]>
   ScheduledStops(): Promise<ScheduledStop[]>
   PostponeScheduledStop(groupID: string, minutes: number): Promise<void>
   SkipScheduledStop(groupID: string): Promise<void>
   StopScheduledNow(groupID: string): Promise<void>
   ScheduleStatuses(): Promise<GroupScheduleStatus[]>
+  /** groupID "" = every group with a schedule */
   SkipNextScheduled(groupID: string, kind: ScheduleKind): Promise<void>
   ResumeScheduled(groupID: string, kind: ScheduleKind): Promise<void>
   TakeLaunchFolders(): Promise<FolderCheck[]>

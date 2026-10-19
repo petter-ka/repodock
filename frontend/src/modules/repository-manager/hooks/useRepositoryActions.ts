@@ -75,26 +75,28 @@ export function useRepositoryActions() {
       /** Mark a repository as long-running (dev server) for group runs. */
       setContinuous: (repoId: string, continuous: boolean) => mutateWorkspace(() => repositoryApi.setRepositoryContinuous(repoId, continuous)),
       /** Saves a group's schedule; true when saved. */
-      async saveSchedule(group: Group, schedule: GroupSchedule) {
-        const saved = await mutateWorkspace(() => repositoryApi.setGroupSchedule(group.id, schedule))
+      /** Gives the listed groups the same schedule (others keep theirs); true when saved. */
+      async saveSchedule(groupIds: string[], schedule: GroupSchedule) {
+        const saved = await mutateWorkspace(() => repositoryApi.setGroupSchedules(groupIds, schedule))
         if (!saved) return false
         const on = (schedule.startEnabled || schedule.stopEnabled) && schedule.days.length > 0
-        notify(f(on ? t.schedule.saved : t.schedule.turnedOff, { name: group.name }), { tone: "success" })
+        notify(f(on ? t.schedule.saved : t.schedule.turnedOff, { count: saved.length }), { tone: "success" })
         return true
       },
       /**
-       * Cancels a group's next scheduled start or stop ahead of time; `when`
-       * is its display time, for the notification. True when done.
+       * Cancels the next scheduled start or stop ahead of time, for one group
+       * or (group null) every scheduled group; `when` is its display time,
+       * for the notification. True when done.
        */
-      async skipScheduled(group: Group, kind: ScheduleKind, when: string) {
-        const ok = await guard(async () => { await repositoryApi.skipNextScheduled(group.id, kind); return true })
-        if (ok) notify(f(kind === "start" ? t.schedule.startCancelled : t.schedule.stopCancelled, { name: group.name, when }), { tone: "success" })
+      async skipScheduled(group: Group | null, kind: ScheduleKind, when: string) {
+        const ok = await guard(async () => { await repositoryApi.skipNextScheduled(group?.id ?? "", kind); return true })
+        if (ok) notify(f(kind === "start" ? t.schedule.startCancelled : t.schedule.stopCancelled, { name: group?.name ?? t.schedule.allScheduled, when }), { tone: "success" })
         return !!ok
       },
-      /** Takes back a cancelled start or stop. True when done. */
-      async resumeScheduled(group: Group, kind: ScheduleKind, when: string) {
-        const ok = await guard(async () => { await repositoryApi.resumeScheduled(group.id, kind); return true })
-        if (ok) notify(f(kind === "start" ? t.schedule.startRestored : t.schedule.stopRestored, { name: group.name, when }), { tone: "success" })
+      /** Takes back a cancelled start or stop (group null: every group). True when done. */
+      async resumeScheduled(group: Group | null, kind: ScheduleKind, when: string) {
+        const ok = await guard(async () => { await repositoryApi.resumeScheduled(group?.id ?? "", kind); return true })
+        if (ok) notify(f(kind === "start" ? t.schedule.startRestored : t.schedule.stopRestored, { name: group?.name ?? t.schedule.allScheduled, when }), { tone: "success" })
         return !!ok
       },
       /**

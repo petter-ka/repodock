@@ -1,5 +1,5 @@
 import { AlarmClock, Play, RotateCcw, Square, X } from "lucide-react"
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
@@ -71,37 +71,66 @@ export function NextEventChip({ group, kind, at, skipped, postponed, actions }: 
   )
 }
 
-/** Dropdown items: cancel or restore the next start/stop, then edit the schedule. */
-export function ScheduleMenuItems({ group, status, actions, onEdit }: {
-  group: Group
-  status: GroupScheduleStatus | undefined
+/**
+ * The next start and stop across several groups (they share the workspace
+ * schedule): the earliest time of each, and whether it is cancelled for
+ * some or all of them.
+ */
+export function combinedEvents(statuses: GroupScheduleStatus[]) {
+  return (["start", "stop"] as const).flatMap((kind) => {
+    const upcoming = statuses.flatMap((status) => upcomingEvents(status)).filter((event) => event.kind === kind)
+    if (upcoming.length === 0) return []
+    const at = new Date(Math.min(...upcoming.map((event) => event.at.getTime())))
+    return [{
+      kind, at,
+      anySkipped: upcoming.some((event) => event.skipped),
+      allSkipped: upcoming.every((event) => event.skipped),
+      postponed: upcoming.some((event) => event.postponed),
+    }]
+  }).sort((a, b) => a.at.getTime() - b.at.getTime())
+}
+
+/**
+ * Dropdown items: cancel or restore the next start/stop — of one group, or
+ * (group null) of every scheduled group — then edit the schedule.
+ */
+export function ScheduleMenuItems({ group, statuses, actions, onEdit, editLabel }: {
+  group: Group | null
+  statuses: GroupScheduleStatus[]
   actions: RepositoryActions
   onEdit: () => void
+  /** defaults to "Edit schedule…" */
+  editLabel?: string
 }) {
   const { t, f, locale } = useI18n()
-  const events = upcomingEvents(status)
+  const events = combinedEvents(statuses)
   return (
     <>
       {events.length === 0 && <DropdownMenuItem disabled>{t.schedule.nextNothing}</DropdownMenuItem>}
       {events.map((event) => {
         const when = formatWhen(event.at, t, locale)
         const shown = event.postponed ? f(t.schedule.postponedNote, { when }) : when
-        return event.skipped ? (
-          <DropdownMenuItem key={event.kind} onSelect={() => void actions.resumeScheduled(group, event.kind, when)}>
-            <RotateCcw />
-            <span className="flex-1">{event.kind === "start" ? t.schedule.restoreStart : t.schedule.restoreStop}</span>
-            <span className="pl-3 text-[11px] tabular-nums text-muted-foreground line-through">{shown}</span>
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem key={event.kind} onSelect={() => void actions.skipScheduled(group, event.kind, when)}>
-            {event.kind === "start" ? <Play /> : <Square />}
-            <span className="flex-1">{event.kind === "start" ? t.schedule.skipStart : t.schedule.skipStop}</span>
-            <span className="pl-3 text-[11px] tabular-nums text-muted-foreground">{shown}</span>
-          </DropdownMenuItem>
+        return (
+          <Fragment key={event.kind}>
+            {!event.allSkipped && (
+              <DropdownMenuItem onSelect={() => void actions.skipScheduled(group, event.kind, when)}>
+                {event.kind === "start" ? <Play /> : <Square />}
+                <span className="flex-1">{event.kind === "start" ? t.schedule.skipStart : t.schedule.skipStop}</span>
+                <span className="pl-3 text-[11px] tabular-nums text-muted-foreground">{shown}</span>
+              </DropdownMenuItem>
+            )}
+            {event.anySkipped && (
+              <DropdownMenuItem onSelect={() => void actions.resumeScheduled(group, event.kind, when)}>
+                <RotateCcw />
+                <span className="flex-1">{event.kind === "start" ? t.schedule.restoreStart : t.schedule.restoreStop}</span>
+                <span className="pl-3 text-[11px] tabular-nums text-muted-foreground line-through">{shown}</span>
+              </DropdownMenuItem>
+            )}
+          </Fragment>
         )
       })}
       <DropdownMenuSeparator />
-      <DropdownMenuItem onSelect={onEdit}><AlarmClock /> {t.schedule.editSchedule}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={onEdit}><AlarmClock /> {editLabel ?? t.schedule.editSchedule}</DropdownMenuItem>
     </>
   )
 }

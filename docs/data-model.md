@@ -16,7 +16,7 @@ Workspace
 │   ├── collapsed
 │   ├── runMode              # parallel (default, ADR-0028) | sequential — see ADR-0010
 │   ├── skippedRepositoryIds[] # members "Run group" leaves out — ADR-0024
-│   └── schedule             # ADR-0025
+│   └── schedule             # this group's own schedule — ADR-0025
 │       ├── days[]           # 0 = Sunday … 6 = Saturday, sorted
 │       ├── startEnabled, startAt   # "HH:MM" local time
 │       └── stopEnabled, stopAt     # "HH:MM"; a countdown precedes the stop

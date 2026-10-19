@@ -43,6 +43,8 @@ func at(value string) time.Time {
 	return t
 }
 func weekdays() []int { return []int{1, 2, 3, 4, 5} }
+
+// newSetup gives one group "g" the schedule s.
 func newSetup(s domain.GroupSchedule) (*fakeHost, *clock, *Scheduler, *[]any) {
 	host := &fakeHost{groups: []domain.Group{{ID: "g", Name: "Work", Schedule: s}}, running: map[string]int{}}
 	c := &clock{}
@@ -323,5 +325,58 @@ func TestSkipNextRejectsUnknownKindsAndMissingSchedules(t *testing.T) {
 	c.set("2026-10-19 12:00")
 	if s.SkipNext("g", "lunch") == nil || s.SkipNext("g", KindStart) == nil || s.SkipNext("missing", KindStop) == nil {
 		t.Fatal("expected errors")
+	}
+}
+
+func TestGroupsFollowTheirOwnSchedules(t *testing.T) {
+	host, c, s, _ := newSetup(domain.GroupSchedule{Days: weekdays(), StartEnabled: true, StartAt: "09:00"})
+	host.groups = append(host.groups,
+		domain.Group{ID: "late", Name: "Late", Schedule: domain.GroupSchedule{Days: weekdays(), StartEnabled: true, StartAt: "10:00"}},
+		domain.Group{ID: "off", Name: "Off"})
+	c.set("2026-10-19 08:59")
+	s.last = c.t
+	c.set("2026-10-19 09:00")
+	s.Tick()
+	if len(host.started) != 1 || host.started[0] != "g" {
+		t.Fatalf("started at 09:00 = %v", host.started)
+	}
+	c.set("2026-10-19 10:00")
+	s.Tick()
+	if len(host.started) != 2 || host.started[1] != "late" {
+		t.Fatalf("started at 10:00 = %v", host.started)
+	}
+	if st := s.Statuses(); len(st) != 2 {
+		t.Fatalf("a group without a schedule has a status: %#v", st)
+	}
+}
+
+func TestSkipNextForEveryScheduledGroupAndResume(t *testing.T) {
+	host, c, s, _ := newSetup(domain.GroupSchedule{Days: weekdays(), StartEnabled: true, StartAt: "09:00"})
+	host.groups = append(host.groups, domain.Group{ID: "other", Name: "Other", Schedule: domain.GroupSchedule{Days: weekdays(), StartEnabled: true, StartAt: "09:30"}})
+	c.set("2026-10-19 07:00")
+	s.last = c.t
+	if err := s.SkipNext("", KindStart); err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range s.Statuses() {
+		if !st.StartSkipped {
+			t.Fatalf("not cancelled: %#v", st)
+		}
+	}
+	if err := s.Resume("", KindStart); err != nil {
+		t.Fatal(err)
+	}
+	c.set("2026-10-19 09:00")
+	s.Tick()
+	c.set("2026-10-19 09:30")
+	s.Tick()
+	if len(host.started) != 2 {
+		t.Fatalf("started = %v", host.started)
+	}
+	for i := range host.groups {
+		host.groups[i].Schedule.StartEnabled = false
+	}
+	if err := s.SkipNext("", KindStart); err == nil {
+		t.Fatal("expected an error when nothing is scheduled")
 	}
 }

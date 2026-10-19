@@ -49,7 +49,7 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-25 | Mini apps: toggleable, draggable, non-blocking floating tools; first app kills a process by PID or port | P1 |
 | FR-26 | JWT tool mini app: generate test tokens with selectable roles and decode/verify tokens; input is remembered | P2 |
 | FR-27 | Mark repositories of a group as skipped when the group runs | P1 |
-| FR-28 | Start and stop a group at set times on chosen days, with a countdown before a stop | P1 |
+| FR-28 | Start and stop each group on its own schedule (set for several groups at once, by default all), with a countdown before a stop | P1 |
 | FR-29 | Accept a folder on the command line and ask which group it goes to | P1 |
 | FR-30 | Show a grouped workspace dashboard as the default "All repositories" view | P1 |
 | FR-31 | Mark repositories as continuous (dev servers) so group runs do not wait for them; parallel group runs by default | P1 |
@@ -151,9 +151,10 @@ Needs enough observability to diagnose runaway local dev processes.
   - the skip is stored on the group and dropped when the repository moves to another group; skipped rows are visibly marked in the sidebar.
 
 - FR-28 (2026-10-19): see ADR-0025. Acceptance criteria:
-  - a group's schedule has a start time and/or a stop time (each can be switched on and off) and the days it applies to: every day, weekdays, weekends, or any custom set of weekdays;
-  - at the start time RepoDock runs the group (unless it is already running); at the stop time it stops every process of the group; schedules act only while RepoDock is open;
-  - 30 minutes before a stop of a running group a countdown dialog appears with postpone (+15/+30/+60 min), "Skip this time" and "Stop now"; it can be hidden into a corner pill and returns at 5 minutes and 1 minute left; idle groups are not announced;
+  - every group has its own schedule: a start time and/or a stop time (each can be switched on and off) and the days it applies to (every day, weekdays, weekends, or any custom set of weekdays); a group can have none while others do;
+  - the schedule dialog applies its settings to the ticked groups: all groups when opened to set schedules up, only that group when opened from a group; it shows each group's current schedule, warns before replacing a different one, and can turn off just the ticked groups;
+  - at its start time RepoDock runs a group (unless it is already running); at its stop time it stops every process of the group; schedules act only while RepoDock is open;
+  - 30 minutes before a stop a countdown dialog lists every running group about to stop, with postpone (+15/+30/+60 min), "Cancel this stop" and "Stop now" for all of them and "Keep running" per group; it can be hidden into a corner pill and returns at 5 minutes and 1 minute left; idle groups are not announced;
   - the schedule dialog previews the day on a 24-hour strip and shows the next start and stop; scheduled groups show a clock in the sidebar; schedule actions are announced as notifications;
   - the countdown's "Cancel this stop" keeps everything running and the schedule continues next time;
   - the next start or stop can be cancelled at any time ahead (sidebar clock menu, or the × on a dashboard group card's chip) and restored with Undo; cancelled ones are shown struck through and the clock turns amber.

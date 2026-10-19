@@ -27,16 +27,17 @@ func (a *App) SetRepositoryContinuous(repoID string, continuous bool) error {
 	return a.persist()
 }
 
-// SetGroupSchedule saves when the group starts and stops by itself
-// (ADR-0025). A postponed or skipped stop of the group is forgotten.
-func (a *App) SetGroupSchedule(groupID string, schedule domain.GroupSchedule) (domain.Group, error) {
-	group, err := a.workspace.SetGroupSchedule(groupID, schedule)
+// SetGroupSchedules gives the listed groups the same schedule; each keeps
+// its own copy and other groups keep theirs (ADR-0025). Postponed or
+// cancelled starts and stops of those groups are forgotten.
+func (a *App) SetGroupSchedules(groupIDs []string, schedule domain.GroupSchedule) ([]domain.Group, error) {
+	groups, err := a.workspace.SetGroupSchedules(groupIDs, schedule)
 	if err != nil {
-		return domain.Group{}, err
+		return nil, err
 	}
 	err = a.persist()
-	a.schedule.Reset(groupID)
-	return group, err
+	a.schedule.Reset(groupIDs...)
+	return groups, err
 }
 
 // ScheduledStops lists the scheduled stops announced with a countdown.
@@ -56,12 +57,14 @@ func (a *App) SkipScheduledStop(groupID string) error { return a.schedule.Skip(g
 func (a *App) ScheduleStatuses() []domain.GroupScheduleStatus { return a.schedule.Statuses() }
 
 // SkipNextScheduled cancels a group's next scheduled "start" or "stop"
-// (kind) ahead of time; the schedule resumes with the one after it.
+// (kind) ahead of time; the schedule resumes with the one after it. An empty
+// groupID cancels it for every group with a schedule.
 func (a *App) SkipNextScheduled(groupID string, kind string) error {
 	return a.schedule.SkipNext(groupID, kind)
 }
 
-// ResumeScheduled takes back a cancelled "start" or "stop" (kind).
+// ResumeScheduled takes back a cancelled "start" or "stop" (kind); an empty
+// groupID takes it back for every scheduled group.
 func (a *App) ResumeScheduled(groupID string, kind string) error {
 	return a.schedule.Resume(groupID, kind)
 }

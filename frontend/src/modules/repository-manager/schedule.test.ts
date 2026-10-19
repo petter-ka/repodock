@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { dayPreset, formatCountdown, formatIn, nextOccurrence, scheduleOf } from "./schedule"
+import { dayPreset, sameSchedule, formatCountdown, formatIn, nextOccurrence, scheduleOf } from "./schedule"
 
 // 2026-10-19 is a Monday.
 const at = (day: number, h: number, m = 0) => new Date(2026, 9, day, h, m)
@@ -32,5 +32,12 @@ describe("schedule helpers", () => {
 
   it("fills defaults for groups saved without a schedule", () => {
     expect(scheduleOf({ schedule: null })).toMatchObject({ days: [], startEnabled: false, stopEnabled: false })
+  })
+
+  it("compares schedules by what they do", () => {
+    const base = { days: [1, 2], startEnabled: true, startAt: "09:00", stopEnabled: false, stopAt: "18:00" }
+    expect(sameSchedule(base, { ...base, days: [2, 1], stopAt: "20:00" })).toBe(true)
+    expect(sameSchedule(base, { ...base, startAt: "10:00" })).toBe(false)
+    expect(sameSchedule({ ...base, startEnabled: false }, { ...base, days: [], startEnabled: false })).toBe(true)
   })
 })

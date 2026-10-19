@@ -48,6 +48,10 @@ describe("computeDashboard", () => {
     expect(many.stack).toEqual([{ name: "A", count: 1 }, { name: "B", count: 1 }, { name: "", count: 2, other: true }])
   })
 
+  it("marks only groups with their own active schedule", () => {
+    expect(data.groups.map((g) => g.scheduled)).toEqual([true, false])
+  })
+
   it("never cycles colours", () => {
     expect(seriesColor(0)).toBe("var(--series-1)")
     expect(seriesColor(8)).toBe("var(--series-other)")

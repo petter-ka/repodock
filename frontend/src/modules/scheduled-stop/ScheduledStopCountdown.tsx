@@ -2,6 +2,7 @@ import { AlarmClock, CalendarX, Loader2, Square, TimerReset } from "lucide-react
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tooltip } from "@/components/ui/tooltip"
 import { errorMessage } from "@/lib/bridge"
 import { useI18n } from "@/lib/i18n"
 import { cn, formatCountdown } from "@/lib/utils"
@@ -73,7 +74,10 @@ export function ScheduledStopCountdown() {
 
   const visible = pending.filter((stop) => !(keyOf(stop) in hidden))
   const primary = visible[0]
-  const others = useMemo(() => pending.filter((stop) => stop !== primary), [pending, primary])
+  // Groups sharing the workspace schedule stop together: the dialog's main
+  // actions apply to all of them; a postponed group shows separately.
+  const batch = useMemo(() => (primary ? visible.filter((stop) => stop.stopAt === primary.stopAt) : []), [visible, primary])
+  const others = useMemo(() => pending.filter((stop) => !batch.includes(stop)), [pending, batch])
 
   const hide = () => setHidden((current) => {
     const next = { ...current }
@@ -82,8 +86,8 @@ export function ScheduledStopCountdown() {
   })
   const show = () => setHidden({})
 
-  const act = async (stop: ScheduledStop, kind: string, work: () => Promise<void>, success?: string) => {
-    setBusy(`${stop.groupId}:${kind}`)
+  const act = async (key: string, work: () => Promise<unknown>, success?: string) => {
+    setBusy(key)
     try {
       await work()
       if (success) notify(success, { tone: "success" })
@@ -93,11 +97,13 @@ export function ScheduledStopCountdown() {
       setBusy(null)
     }
   }
-  const postpone = (stop: ScheduledStop, minutes: number) =>
-    act(stop, `+${minutes}`, () => scheduledStopApi.postpone(stop.groupId, minutes),
-      f(t.countdown.postponed, { name: stop.groupName, time: clock(new Date(new Date(stop.stopAt).getTime() + minutes * 60_000).toISOString()) }))
-  const skip = (stop: ScheduledStop) => act(stop, "skip", () => scheduledStopApi.skip(stop.groupId), f(t.countdown.skipped, { name: stop.groupName }))
-  const stopNow = (stop: ScheduledStop) => act(stop, "stop", () => scheduledStopApi.stopNow(stop.groupId))
+  const names = (stops: ScheduledStop[]) => stops.map((stop) => stop.groupName).join(", ")
+  const postpone = (stops: ScheduledStop[], minutes: number, key = `all:+${minutes}`) =>
+    act(key, () => Promise.all(stops.map((stop) => scheduledStopApi.postpone(stop.groupId, minutes))),
+      f(t.countdown.postponed, { name: names(stops), time: clock(new Date(new Date(stops[0].stopAt).getTime() + minutes * 60_000).toISOString()) }))
+  const skip = (stops: ScheduledStop[], key = "all:skip") =>
+    act(key, () => Promise.all(stops.map((stop) => scheduledStopApi.skip(stop.groupId))), f(t.countdown.skipped, { name: names(stops) }))
+  const stopNow = (stops: ScheduledStop[]) => act("all:stop", () => Promise.all(stops.map((stop) => scheduledStopApi.stopNow(stop.groupId))))
 
   if (pending.length === 0) return null
 
@@ -135,32 +141,48 @@ export function ScheduledStopCountdown() {
                   </>
                 )}
               </Ring>
-              <p className="mt-3 text-lg font-semibold">{primary.groupName}</p>
+              <p className="mt-3 text-lg font-semibold">{batch.length === 1 ? primary.groupName : f(t.countdown.groupsStopping, { count: batch.length })}</p>
               <p className="text-sm text-muted-foreground">
                 {f(primary.postponed ? t.countdown.postponedTo : t.countdown.at, { time: clock(primary.stopAt) })}
                 {" · "}
-                {f(t.countdown.processes, { count: primary.running })}
+                {f(t.countdown.processes, { count: batch.reduce((n, stop) => n + stop.running, 0) })}
               </p>
             </div>
+
+            {batch.length > 1 && (
+              <ul className="thin-scrollbar grid max-h-44 gap-1 overflow-y-auto">
+                {batch.map((stop) => (
+                  <li key={keyOf(stop)} className="flex items-center gap-2 rounded-lg bg-muted/50 py-1 pl-2.5 pr-1 text-sm">
+                    <span className="min-w-0 flex-1 truncate font-medium">{stop.groupName}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{f(t.countdown.processes, { count: stop.running })}</span>
+                    <Tooltip label={t.countdown.keepRunningHint}>
+                      <Button size="xs" variant="ghost" disabled={busy !== null} onClick={() => void skip([stop], `${stop.groupId}:skip`)}>
+                        {busy === `${stop.groupId}:skip` ? <Loader2 className="animate-spin" /> : <CalendarX />} {t.countdown.keepRunning}
+                      </Button>
+                    </Tooltip>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <div className="grid gap-2">
               <div className="flex items-center gap-2">
                 <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><TimerReset className="size-3.5" /> {t.countdown.postpone}</span>
                 <div className="grid flex-1 grid-cols-3 gap-1.5">
                   {POSTPONE_MINUTES.map((minutes) => (
-                    <Button key={minutes} size="sm" variant="outline" disabled={busy !== null} onClick={() => void postpone(primary, minutes)}>
-                      {busy === `${primary.groupId}:+${minutes}` && <Loader2 className="animate-spin" />}
+                    <Button key={minutes} size="sm" variant="outline" disabled={busy !== null} onClick={() => void postpone(batch, minutes)}>
+                      {busy === `all:+${minutes}` && <Loader2 className="animate-spin" />}
                       {f(t.countdown.postponeBy, { minutes })}
                     </Button>
                   ))}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" disabled={busy !== null} onClick={() => void skip(primary)}>
-                  {busy === `${primary.groupId}:skip` ? <Loader2 className="animate-spin" /> : <CalendarX />} {t.countdown.skip}
+                <Button variant="secondary" disabled={busy !== null} onClick={() => void skip(batch)}>
+                  {busy === "all:skip" ? <Loader2 className="animate-spin" /> : <CalendarX />} {t.countdown.skip}
                 </Button>
-                <Button variant="destructive" disabled={busy !== null} onClick={() => void stopNow(primary)}>
-                  {busy === `${primary.groupId}:stop` ? <Loader2 className="animate-spin" /> : <Square />} {t.countdown.stopNow}
+                <Button variant="destructive" disabled={busy !== null} onClick={() => void stopNow(batch)}>
+                  {busy === "all:stop" ? <Loader2 className="animate-spin" /> : <Square />} {t.countdown.stopNow}
                 </Button>
               </div>
               <p className="text-center text-[11px] text-muted-foreground">{t.countdown.cancelHint}</p>
@@ -175,8 +197,8 @@ export function ScheduledStopCountdown() {
                     <li key={keyOf(stop)} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-sm">
                       <span className="min-w-0 flex-1 truncate font-medium">{stop.groupName}</span>
                       <span className="font-mono text-xs tabular-nums text-muted-foreground">{formatCountdown(remaining(stop))}</span>
-                      <Button size="xs" variant="ghost" disabled={busy !== null} onClick={() => void postpone(stop, 30)}>{f(t.countdown.postponeBy, { minutes: 30 })}</Button>
-                      <Button size="xs" variant="ghost" disabled={busy !== null} onClick={() => void skip(stop)}>{t.countdown.skip}</Button>
+                      <Button size="xs" variant="ghost" disabled={busy !== null} onClick={() => void postpone([stop], 30, `${stop.groupId}:+30`)}>{f(t.countdown.postponeBy, { minutes: 30 })}</Button>
+                      <Button size="xs" variant="ghost" disabled={busy !== null} onClick={() => void skip([stop], `${stop.groupId}:skip`)}>{t.countdown.skip}</Button>
                     </li>
                   ))}
                 </ul>
