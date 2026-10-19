@@ -16,8 +16,10 @@ func TestFolderArgsSkipFlagsAndResolvePaths(t *testing.T) {
 	if err := os.WriteFile(file, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := FolderArgs([]string{"-psn_0_123", "repo", "repo/package.json", " ", "/abs/elsewhere"}, cwd)
-	want := []string{filepath.Join(cwd, "repo"), filepath.Join(cwd, "repo"), filepath.Clean("/abs/elsewhere")}
+	absolute := filepath.Join(t.TempDir(), "other")
+	got := FolderArgs([]string{"-psn_0_123", "repo", "repo/package.json", " ", "/abs/elsewhere", absolute}, cwd)
+	// A rooted path is absolute on Unix; on Windows it is on cwd's drive.
+	want := []string{filepath.Join(cwd, "repo"), filepath.Join(cwd, "repo"), filepath.VolumeName(cwd) + filepath.Clean("/abs/elsewhere"), absolute}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

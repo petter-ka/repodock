@@ -25,7 +25,8 @@ const relaunchWindow = 5 * time.Second
 
 // FolderArgs picks the folder arguments of a command line (without the
 // program name): every argument that is not a flag, made absolute against
-// cwd. A file stands for the folder it is in.
+// cwd. On Windows a path rooted without a drive (`\work\app`) is on cwd's
+// drive. A file stands for the folder it is in.
 func FolderArgs(args []string, cwd string) []string {
 	out := []string{}
 	for _, arg := range args {
@@ -33,7 +34,11 @@ func FolderArgs(args []string, cwd string) []string {
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
 		}
-		if !filepath.IsAbs(arg) {
+		switch {
+		case filepath.IsAbs(arg):
+		case os.PathSeparator == '\\' && (strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, `\`)):
+			arg = filepath.VolumeName(cwd) + filepath.Clean(arg)
+		default:
 			arg = filepath.Join(cwd, arg)
 		}
 		arg = filepath.Clean(arg)
