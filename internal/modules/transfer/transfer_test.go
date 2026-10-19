@@ -174,10 +174,10 @@ func TestDuplicatePathsInsideFileImportOncePerEntry(t *testing.T) {
 func TestAliasRoundTripAndVersionGate(t *testing.T) {
 	ws := domain.Workspace{
 		Groups:       []domain.Group{{ID: "g", Name: "G", RepositoryIDs: []string{"r"}}},
-		Repositories: []domain.Repository{{ID: "r", Name: "api", Alias: "api (prod)", Path: filepath.Join(home, "api"), GroupID: "g"}},
+		Repositories: []domain.Repository{{ID: "r", Name: "api", Alias: "api (prod)", Path: filepath.Join(home, "api"), GroupID: "g", Continuous: true}},
 	}
 	doc, err := Build(ws, nil, home, time.Now())
-	if err != nil || doc.Version != 3 || doc.Groups[0].Repositories[0].Alias != "api (prod)" {
+	if err != nil || doc.Version != 3 || doc.Groups[0].Repositories[0].Alias != "api (prod)" || !doc.Groups[0].Repositories[0].Continuous {
 		t.Fatalf("doc = %+v, %v", doc, err)
 	}
 	old := `{"format":"repodock.workspace-export","version":2,"groups":[{"name":"G","runMode":"sequential","collapsed":false,"repositories":[{"name":"a","alias":"b","path":"/x","commandSequence":null}]}]}`

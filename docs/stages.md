@@ -7,10 +7,10 @@
 | 0 Foundation | Done | `wails build` and `wails dev` verified on Windows |
 | 1 Repository Manager MVP | Done | Group CRUD, ordered script discovery, dedup, problem reporting, JSON export/import (ADR-0011) |
 | 2 Process Center | Done | Batched streaming, tree stats, stop/restart/stop-all, retention |
-| 3 Command Plans | Done | Backend-owned sequences (ADR-0009), background and no-op steps, group runs sequential/parallel (ADR-0010), global commands (ADR-0012) |
+| 3 Command Plans | Done | Backend-owned sequences (ADR-0009), background and no-op steps, group runs sequential/parallel (ADR-0010), global commands (ADR-0012), skipped members (ADR-0024), group schedules with stop countdown (ADR-0025) |
 | 4 Environment Workspace | Done | Atomic writes, masked-by-default view, unsaved-change guards |
 | 5 Hardening | Partial | Tree kill per OS, corrupt-workspace recovery, and Windows/macOS release builds on GitHub Releases done; code signing, Linux packaging, accessibility audit and telemetry decision open |
-| 6 Extensibility | Ready | Module registry in place; no extra modules yet |
+| 6 Extensibility | Ready | Module registry in place; workspace dashboard (ADR-0027); folder launch argument and single instance (ADR-0026) |
 
 Open items: the 10-simultaneous-process exit criterion has been exercised with simulated output only; macOS/Linux packaging and real-device smoke tests are still required; OS keychain integration is future work.
 

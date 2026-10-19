@@ -3,7 +3,7 @@
 // sequences; it never touches the real filesystem.
 import type { Backend } from "./bridge"
 import type {
-  AppBinding, CommandStep, HostProcess, JwtSettings, QuickCommand, GlobalCommand, GroupRun, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, SequenceRun, Workspace,
+  AppBinding, CommandStep, HostProcess, JwtSettings, QuickCommand, GlobalCommand, GroupRun, GroupSchedule, GroupScheduleStatus, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, ScheduledStop, SequenceRun, Workspace,
 } from "./contracts"
 import { displayName } from "./contracts"
 
@@ -11,22 +11,44 @@ const ZERO = "0001-01-01T00:00:00Z"
 const now = () => new Date().toISOString()
 const uid = () => crypto.randomUUID()
 
+const noSchedule = (): GroupSchedule => ({ days: [], startEnabled: false, startAt: "", stopEnabled: false, stopAt: "" })
+
 function seedWorkspace(): Workspace {
-  const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[]): Repository => ({
+  const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[], stack: string[] = [], deps = 0, devDeps = 0): Repository => ({
     id, name, alias: "", quickCommands: [], path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
+    dependencies: deps, devDependencies: devDeps, stack, continuous: false,
     scripts: scripts.map(([n, command]) => ({ name: n, command })),
     commandSequence: scripts.filter(([n]) => n === "dev").map(([n], i) => ({ id: `${id}-s${i}`, label: n, script: n, globalCommand: "", command: "", enabled: true, background: true })),
   })
+  const weekdays = [1, 2, 3, 4, 5]
   return {
     version: 1,
     groups: [
-      { id: "g-frontend", name: "Frontend", repositoryIds: ["r-web", "r-docs"], collapsed: false, runMode: "parallel" },
-      { id: "g-services", name: "Services", repositoryIds: ["r-api"], collapsed: false, runMode: "sequential" },
+      {
+        id: "g-frontend", name: "Frontend", repositoryIds: ["r-web", "r-docs", "r-marketing"], collapsed: false, runMode: "parallel", skippedRepositoryIds: ["r-marketing"],
+        schedule: { days: weekdays, startEnabled: true, startAt: "09:00", stopEnabled: true, stopAt: "18:00" },
+      },
+      {
+        id: "g-services", name: "Services", repositoryIds: ["r-api", "r-billing"], collapsed: false, runMode: "sequential", skippedRepositoryIds: [],
+        schedule: { days: weekdays, startEnabled: true, startAt: "08:45", stopEnabled: true, stopAt: "19:30" },
+      },
+      { id: "g-libs", name: "Libraries", repositoryIds: ["r-ui", "r-ops"], collapsed: false, runMode: "sequential", skippedRepositoryIds: [], schedule: noSchedule() },
     ],
     repositories: [
-      repo("r-web", "dashboard-web", "pnpm", "g-frontend", [["dev", "next dev --turbo"], ["build", "next build"], ["lint", "next lint"], ["test", "vitest run"]], [".env", ".env.local"]),
-      repo("r-docs", "docs-site", "npm", "g-frontend", [["dev", "astro dev"], ["build", "astro build"]], []),
-      repo("r-api", "identity-api", "yarn", "g-services", [["start:dev", "nest start --watch"], ["test", "jest"], ["migrate", "prisma migrate deploy"]], [".env", ".env.test"]),
+      repo("r-web", "dashboard-web", "pnpm", "g-frontend", [["dev", "next dev --turbo"], ["build", "next build"], ["lint", "next lint"], ["test", "vitest run"]], [".env", ".env.local"], ["Next.js", "TypeScript"], 38, 24),
+      repo("r-docs", "docs-site", "npm", "g-frontend", [["dev", "astro dev"], ["build", "astro build"]], [], ["Astro"], 9, 4),
+      repo("r-marketing", "marketing-site", "npm", "g-frontend", [["dev", "vite"], ["build", "vite build"], ["preview", "vite preview"]], [".env"], ["Vue", "Vite"], 12, 9),
+      {
+        ...repo("r-api", "identity-api", "yarn", "g-services", [["start:dev", "nest start --watch"], ["test", "jest"], ["migrate", "prisma migrate deploy"]], [".env", ".env.test"], ["NestJS", "Express", "TypeScript"], 27, 31),
+        continuous: true,
+        commandSequence: [
+          { id: "r-api-s0", label: "migrate", script: "migrate", globalCommand: "", command: "", enabled: true, background: false },
+          { id: "r-api-s1", label: "start:dev", script: "start:dev", globalCommand: "", command: "", enabled: true, background: false },
+        ],
+      },
+      repo("r-billing", "billing-worker", "pnpm", "g-services", [["dev", "tsx watch src/main.ts"], ["test", "vitest"]], [".env"], ["Fastify", "TypeScript"], 14, 11),
+      repo("r-ui", "shared-ui", "pnpm", "g-libs", [["dev", "storybook dev"], ["build", "tsup"], ["test", "vitest"]], [], ["React", "Vite", "TypeScript"], 6, 42),
+      { ...repo("r-ops", "ops-scripts", "", "g-libs", [], []), commandSequence: [] },
     ],
     globalCommands: [
       { id: "gc-clean", name: "Clean install", command: "npx rimraf node_modules && npm ci" },
@@ -83,7 +105,7 @@ export function createMockBackend(): Backend {
     version: number
     exportedAt: string
     globalCommands?: GlobalCommand[]
-    groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; alias?: string; plainFolder?: boolean; quickCommands?: QuickCommand[]; path: string; commandSequence: CommandStep[] | null }> }>
+    groups: Array<{ name: string; runMode: Group["runMode"]; collapsed: boolean; repositories: Array<{ name: string; alias?: string; plainFolder?: boolean; continuous?: boolean; quickCommands?: QuickCommand[]; path: string; commandSequence: CommandStep[] | null }> }>
   }
   const parseExport = (path: string): ExportDoc => {
     const text = importFiles.get(path)
@@ -265,6 +287,7 @@ export function createMockBackend(): Backend {
       }
       const repo: Repository = {
         id: uid(), name, alias, path, packageManager: "npm", groupId: group.id, envFiles: [], quickCommands: [], lastRefreshedAt: now(), problem: "",
+        dependencies: 3, devDependencies: 2, stack: ["Express"], continuous: false,
         scripts: [{ name: "dev", command: "node server.js" }, { name: "test", command: "node --test" }],
         commandSequence: [],
       }
@@ -278,7 +301,7 @@ export function createMockBackend(): Backend {
       const exists = folderExists(path)
       const registered = findRepoByPath(path)
       return {
-        path, exists, valid: exists, name: path.split(/[\\/]/).filter(Boolean).pop() ?? "",
+        path, exists, valid: exists, packageJson: exists, name: path.split(/[\\/]/).filter(Boolean).pop() ?? "",
         problem: exists ? "" : `folder not found: ${path}`, registeredId: registered?.id ?? "", registeredName: registered ? displayName(registered) : "",
       }
     },
@@ -298,7 +321,7 @@ export function createMockBackend(): Backend {
     },
     async CreateGroup(name) {
       if (!name.trim()) throw "group name cannot be empty"
-      const group: Group = { id: uid(), name: name.trim(), repositoryIds: [], collapsed: false, runMode: "sequential" }
+      const group: Group = { id: uid(), name: name.trim(), repositoryIds: [], collapsed: false, runMode: "parallel", skippedRepositoryIds: [], schedule: noSchedule() }
       workspace.groups.push(group)
       changed()
       return structuredClone(group)
@@ -327,7 +350,7 @@ export function createMockBackend(): Backend {
         format: "repodock.workspace-export", version: 3, exportedAt: now(), ...(globals.length ? { globalCommands: globals } : {}),
         groups: groups.map((g) => ({
           name: g.name, runMode: g.runMode, collapsed: g.collapsed,
-          repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, ...(r.alias ? { alias: r.alias } : {}), ...(r.packageManager ? {} : { plainFolder: true }), ...(r.quickCommands.length ? { quickCommands: r.quickCommands } : {}), path: r.path, commandSequence: r.commandSequence })),
+          repositories: g.repositoryIds.map(findRepo).map((r) => ({ name: r.name, ...(r.alias ? { alias: r.alias } : {}), ...(r.packageManager ? {} : { plainFolder: true }), ...(r.continuous ? { continuous: true } : {}), ...(r.quickCommands.length ? { quickCommands: r.quickCommands } : {}), path: r.path, commandSequence: r.commandSequence })),
         })),
       }
       const name = groupIDs.length === 1 ? `repodock-${groups[0]?.name ?? "group"}.json` : "repodock-workspace.json"
@@ -403,7 +426,7 @@ export function createMockBackend(): Backend {
         let group = findGroupByName(entry.name)
         if (group) anchor = position(entry.name) + 1
         if (!group) {
-          group = { id: uid(), name: entry.name.trim(), repositoryIds: [], collapsed: entry.collapsed, runMode: entry.runMode ?? "sequential" }
+          group = { id: uid(), name: entry.name.trim(), repositoryIds: [], collapsed: entry.collapsed, runMode: entry.runMode ?? "parallel", skippedRepositoryIds: [], schedule: noSchedule() }
           if (anchor < 0) {
             const later = doc.groups.slice(index + 1).map((g) => position(g.name)).find((at) => at >= 0)
             anchor = later ?? workspace.groups.length
@@ -417,6 +440,7 @@ export function createMockBackend(): Backend {
           if (before.has(repo.path.toLowerCase())) { result.repositoriesSkipped++; continue }
           const record: Repository = {
             id: uid(), name: repo.name, alias: repo.alias?.trim() ?? "", path: repo.path, packageManager: repo.plainFolder ? "" : "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
+            dependencies: 0, devDependencies: 0, stack: [], continuous: !!repo.continuous,
             problem: folderExists(repo.path) ? "" : `folder not found: ${repo.path}`, scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),
             quickCommands: (repo.quickCommands ?? []).map((q) => ({ ...q, id: uid(), globalCommand: q.globalCommand ? globalIds.get(q.globalCommand) ?? "" : "" })),
             commandSequence: options.importSequences ? (repo.commandSequence ?? []).filter((s) => s.enabled).map((s) => ({
@@ -443,11 +467,12 @@ export function createMockBackend(): Backend {
       if (!group) throw `group not found: ${groupID}`
       if (groupRuns.get(groupID)?.status === "running") throw "this group is already running"
       const repos = group.repositoryIds.map(findRepo)
-      const enabled = (repo: Repository) => (repo.commandSequence ?? []).some((s) => s.enabled)
-      if (!repos.some(enabled)) throw "no repository in this group has enabled sequence steps"
+      const excluded = new Set(group.skippedRepositoryIds ?? [])
+      const enabled = (repo: Repository) => !excluded.has(repo.id) && (repo.commandSequence ?? []).some((s) => s.enabled)
+      if (!repos.some(enabled)) throw excluded.size ? "nothing to run: every repository in this group is skipped or has no enabled sequence steps" : "no repository in this group has enabled sequence steps"
       const run: GroupRun & { cancelled?: boolean } = {
         id: uid(), groupId: groupID, mode: group.runMode, status: "running", startedAt: now(), endedAt: ZERO,
-        repos: repos.map((repo) => ({ repositoryId: repo.id, name: displayName(repo), sequenceId: "", status: enabled(repo) ? "pending" : "skipped", error: "" })),
+        repos: repos.map((repo) => ({ repositoryId: repo.id, name: displayName(repo), sequenceId: "", status: enabled(repo) ? "pending" : "skipped", error: "", excluded: excluded.has(repo.id), continuous: repo.continuous })),
       }
       groupRuns.set(groupID, run)
       const update = () => { const { cancelled: _c, ...plainRun } = run; emit("group:updated", structuredClone(plainRun)) }
@@ -456,6 +481,20 @@ export function createMockBackend(): Backend {
           const seq = await runSequence(repos[i])
           run.repos[i] = { ...run.repos[i], status: "running", sequenceId: seq.id }
           update()
+          if (repos[i].continuous) {
+            // A long-running member is up once its last step has started (ADR-0028).
+            const lastStarted = () => ["running", "started"].includes(sequences.get(seq.id)?.steps.at(-1)?.status ?? "")
+            let settled = false
+            await Promise.race([sequenceDone.get(seq.id), new Promise<void>((resolve) => {
+              const timer = window.setInterval(() => { if (lastStarted()) { settled = true; window.clearInterval(timer); resolve() } }, 150)
+              void sequenceDone.get(seq.id)?.then(() => window.clearInterval(timer))
+            })])
+            if (settled && sequences.get(seq.id)?.status === "running") {
+              run.repos[i].status = "started"
+              update()
+              return "started"
+            }
+          }
           await sequenceDone.get(seq.id)
           const final = sequences.get(seq.id)!
           run.repos[i].status = final.status === "completed" ? "completed" : final.status === "cancelled" ? "cancelled" : "failed"
@@ -470,7 +509,7 @@ export function createMockBackend(): Backend {
       void (async () => {
         const indexes = repos.map((_, i) => i).filter((i) => run.repos[i].status === "pending")
         if (run.mode === "parallel") await Promise.all(indexes.map(member))
-        else for (const i of indexes) { if (run.cancelled || (await member(i)) !== "completed") break }
+        else for (const i of indexes) { if (run.cancelled || !["completed", "started"].includes(await member(i))) break }
         run.repos.forEach((r) => { if (r.status === "pending") r.status = "cancelled" })
         run.status = run.cancelled ? "cancelled" : run.repos.some((r) => r.status === "failed") ? "failed" : "completed"
         run.endedAt = now()
@@ -665,7 +704,164 @@ export function createMockBackend(): Backend {
       return { name, path: `${repo.path}/${name}`, content, size: content.length, modifiedAt: now() }
     },
     async SaveEnvironmentFile(_repoID, name, content) { envContents[name] = content },
+    async SetRepositorySkipped(repoID, skipped) {
+      const repo = findRepo(repoID)
+      const group = workspace.groups.find((g) => g.id === repo.groupId)!
+      const rest = (group.skippedRepositoryIds ?? []).filter((id) => id !== repoID)
+      group.skippedRepositoryIds = skipped ? [...rest, repoID] : rest
+      changed()
+    },
+    async SetRepositoryContinuous(repoID, continuous) {
+      findRepo(repoID).continuous = continuous
+      changed()
+    },
+    async SetGroupSchedule(groupID, schedule) {
+      const group = workspace.groups.find((g) => g.id === groupID)
+      if (!group) throw "group not found"
+      const clock = /^([01]?\d|2[0-3]):[0-5]\d$/
+      if (schedule.startEnabled && !clock.test(schedule.startAt)) throw "pick a start time"
+      if (schedule.stopEnabled && !clock.test(schedule.stopAt)) throw "pick a stop time"
+      if ((schedule.startEnabled || schedule.stopEnabled) && schedule.days.length === 0) throw "pick at least one day for the schedule"
+      if (schedule.startEnabled && schedule.stopEnabled && schedule.startAt === schedule.stopAt) throw "start and stop times must differ"
+      group.schedule = { ...structuredClone(schedule), days: [...new Set(schedule.days)].sort() }
+      stopOverrides.delete(groupID)
+      startSkips.delete(groupID)
+      changed()
+      evaluateSchedules()
+      return structuredClone(group)
+    },
+    async ScheduledStops() { return structuredClone(pendingStops) },
+    async PostponeScheduledStop(groupID, minutes) {
+      const stop = pendingStops.find((p) => p.groupId === groupID)
+      if (!stop) throw "no scheduled stop is coming up for this group"
+      stopOverrides.set(groupID, { stopAt: new Date(new Date(stop.stopAt).getTime() + minutes * 60_000), skipped: false, done: false, occurrence: stopOverrides.get(groupID)?.occurrence ?? stop.stopAt })
+      evaluateSchedules()
+    },
+    async SkipScheduledStop(groupID) { await api.SkipNextScheduled(groupID, "stop") },
+    async ScheduleStatuses() { return computeStatuses() },
+    async SkipNextScheduled(groupID, kind) {
+      const status = computeStatuses().find((s) => s.groupId === groupID)
+      if (kind === "start") {
+        if (!status || status.nextStart === ZERO) throw "no scheduled start is coming up for this group"
+        startSkips.set(groupID, status.nextStart)
+      } else {
+        if (!status || status.nextStop === ZERO) throw "no scheduled stop is coming up for this group"
+        const occurrence = status.stopPostponed ? stopOverrides.get(groupID)!.occurrence : status.nextStop
+        stopOverrides.set(groupID, { stopAt: new Date(status.nextStop), skipped: true, done: false, occurrence })
+      }
+      evaluateSchedules()
+    },
+    async ResumeScheduled(groupID, kind) {
+      if (kind === "start") startSkips.delete(groupID)
+      else if (stopOverrides.get(groupID)?.skipped) stopOverrides.delete(groupID)
+      evaluateSchedules()
+    },
+    async StopScheduledNow(groupID) {
+      const stop = pendingStops.find((p) => p.groupId === groupID)
+      if (!stop) throw "no scheduled stop is coming up for this group"
+      stopOverrides.set(groupID, { stopAt: new Date(stop.stopAt), skipped: false, done: true, occurrence: stopOverrides.get(groupID)?.occurrence ?? stop.stopAt })
+      await api.StopGroup(groupID)
+      emit("schedule:fired", { groupId: groupID, groupName: stop.groupName, action: "stopped", error: "" })
+      evaluateSchedules()
+    },
+    async TakeLaunchFolders() {
+      const folders = launchFolders.splice(0)
+      return Promise.all(folders.map((path) => api.CheckRepositoryFolder(path)))
+    },
   }
+
+  // Simulated scheduler (ADR-0025): announces stops of running groups within
+  // 30 minutes and fires them. `?stopIn=<minutes>` moves the first group's
+  // stop that close to now (and runs the group) so the countdown can be
+  // previewed; `?launch=<path>` simulates `repodock <path>`.
+  const stopOverrides = new Map<string, { stopAt: Date; skipped: boolean; done: boolean; occurrence: string }>()
+  const startSkips = new Map<string, string>()
+  let pendingStops: ScheduledStop[] = []
+  let statuses: GroupScheduleStatus[] = []
+  /** First time after `from` at which `clock` falls on one of `days`. */
+  const nextAt = (days: number[], clock: string, from: Date) => {
+    const [h, m] = clock.split(":").map(Number)
+    for (let offset = 0; offset <= 8; offset++) {
+      const at = new Date(from.getFullYear(), from.getMonth(), from.getDate() + offset, h, m)
+      if (at > from && days.includes(at.getDay())) return at
+    }
+    return null
+  }
+  // Mirrors Scheduler.upcomingStart/upcomingStop.
+  const computeStatuses = (): GroupScheduleStatus[] => workspace.groups.flatMap((group) => {
+    const s = group.schedule
+    if (!s || !s.days.length) return []
+    const nowDate = new Date()
+    const start = s.startEnabled ? nextAt(s.days, s.startAt, nowDate) : null
+    const override = stopOverrides.get(group.id)
+    let stop: Date | null = null
+    let stopSkipped = false
+    let stopPostponed = false
+    if (override && !override.skipped && !override.done && override.stopAt > nowDate) [stop, stopPostponed] = [override.stopAt, true]
+    else if (s.stopEnabled) {
+      let from = new Date(nowDate.getTime() - 1000)
+      for (let i = 0; i < 8 && !stop; i++) {
+        const at = nextAt(s.days, s.stopAt, from)
+        if (!at) break
+        if (override && new Date(override.occurrence).getTime() === at.getTime() && !override.skipped) { from = at; continue }
+        stop = at
+        stopSkipped = !!override?.skipped && new Date(override.occurrence).getTime() === at.getTime()
+      }
+    }
+    if (!start && !stop) return []
+    return [{
+      groupId: group.id, nextStart: start?.toISOString() ?? ZERO, startSkipped: !!start && startSkips.get(group.id) === start.toISOString(),
+      nextStop: stop?.toISOString() ?? ZERO, stopSkipped, stopPostponed,
+    }]
+  })
+  const params = new URLSearchParams(window.location.search)
+  const stopIn = Number(params.get("stopIn"))
+  if (stopIn > 0 && workspace.groups[0]) {
+    const at = new Date(Date.now() + stopIn * 60_000)
+    workspace.groups[0].schedule = { days: [0, 1, 2, 3, 4, 5, 6], startEnabled: false, startAt: "09:00", stopEnabled: true, stopAt: `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` }
+  }
+  const launchFolders = params.getAll("launch")
+  const groupRunning = (group: Group) => group.repositoryIds.reduce((n, id) => n + [...runs.values()].filter((r) => r.repositoryId === id && (r.status === "running" || r.status === "stopping")).length, 0)
+  const evaluateSchedules = () => {
+    const nowMs = Date.now()
+    const next: ScheduledStop[] = []
+    for (const group of workspace.groups) {
+      const schedule = group.schedule
+      const override = stopOverrides.get(group.id)
+      let stopAt: Date | null = null
+      let postponed = false
+      if (override && !override.skipped && !override.done && override.stopAt.getTime() >= nowMs - 5000) { stopAt = override.stopAt; postponed = true }
+      else if (schedule?.stopEnabled && schedule.days.length) {
+        const [h, m] = schedule.stopAt.split(":").map(Number)
+        const today = new Date(); today.setHours(h, m, 0, 0)
+        const overridden = override && new Date(override.occurrence).getTime() === today.getTime()
+        if (schedule.days.includes(today.getDay()) && today.getTime() >= nowMs - 5000 && !overridden) stopAt = today
+      }
+      if (!stopAt || stopAt.getTime() - nowMs > 30 * 60_000) continue
+      const running = groupRunning(group)
+      if (!running) continue
+      if (stopAt.getTime() <= nowMs) {
+        stopOverrides.set(group.id, { stopAt, skipped: false, done: true, occurrence: override?.occurrence ?? stopAt.toISOString() })
+        void api.StopGroup(group.id).then(() => emit("schedule:fired", { groupId: group.id, groupName: group.name, action: "stopped", error: "" }))
+        continue
+      }
+      next.push({ groupId: group.id, groupName: group.name, stopAt: stopAt.toISOString(), postponed, running })
+    }
+    next.sort((a, b) => a.stopAt.localeCompare(b.stopAt))
+    if (JSON.stringify(next) !== JSON.stringify(pendingStops)) {
+      pendingStops = next
+      emit("schedule:pending", structuredClone(next))
+    }
+    const nextStatuses = computeStatuses()
+    if (JSON.stringify(nextStatuses) !== JSON.stringify(statuses)) {
+      statuses = nextStatuses
+      emit("schedule:status", structuredClone(nextStatuses))
+    }
+  }
+  window.setInterval(evaluateSchedules, 2000)
+  if (launchFolders.length) window.setTimeout(() => emit("launch:folder", null), 300)
+  // The preview stop only shows while the group runs, so start it.
+  if (stopIn > 0 && workspace.groups[0]) window.setTimeout(() => void api.RunGroup(workspace.groups[0].id).catch(() => undefined), 300)
 
   return {
     api,

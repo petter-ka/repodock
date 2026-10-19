@@ -37,7 +37,13 @@ type state struct {
 	cancelled  bool
 	currentRun string
 	done       chan struct{}
+	// settled closes once the last step's process has started, or the
+	// sequence ended: a long-running repository is then up (ADR-0028).
+	settled     chan struct{}
+	settledOnce sync.Once
 }
+
+func (st *state) settle() { st.settledOnce.Do(func() { close(st.settled) }) }
 
 func New(exec Executor) *Runner {
 	return &Runner{exec: exec, runs: map[string]*state{}, latest: map[string]string{}, groups: map[string]*groupState{}}
@@ -68,7 +74,7 @@ func (r *Runner) Start(repo domain.Repository, steps []domain.CommandStep) (doma
 		r.mu.Unlock()
 		return domain.SequenceRun{}, fmt.Errorf("a sequence is already running for this repository")
 	}
-	st := &state{done: make(chan struct{}), run: domain.SequenceRun{
+	st := &state{done: make(chan struct{}), settled: make(chan struct{}), run: domain.SequenceRun{
 		ID: uuid.NewString(), RepositoryID: repo.ID, Status: domain.SequenceRunning, StartedAt: time.Now().UTC(),
 	}}
 	for _, step := range enabled {
@@ -89,6 +95,7 @@ func (r *Runner) Start(repo domain.Repository, steps []domain.CommandStep) (doma
 
 func (r *Runner) execute(st *state, repo domain.Repository, steps []domain.CommandStep) {
 	defer close(st.done)
+	defer st.settle()
 	for i, step := range steps {
 		if r.isCancelled(st) {
 			r.finish(st, i, domain.SequenceCancelled)
@@ -106,6 +113,9 @@ func (r *Runner) execute(st *state, repo domain.Repository, steps []domain.Comma
 			return
 		}
 		r.update(st, func() { st.run.Steps[i].RunID = run.ID; st.currentRun = run.ID })
+		if i == len(steps)-1 && run.Status != domain.RunFailed && run.Status != domain.RunSkipped {
+			st.settle()
+		}
 
 		switch {
 		case run.Status == domain.RunSkipped:
@@ -205,6 +215,21 @@ func (r *Runner) Wait(sequenceID string) (domain.SequenceRun, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return cloneRun(st.run), nil
+}
+
+// WaitSettled blocks until the sequence's last step has started a process,
+// or the sequence ended (finished is then true).
+func (r *Runner) WaitSettled(sequenceID string) (run domain.SequenceRun, finished bool, err error) {
+	r.mu.Lock()
+	st, ok := r.runs[sequenceID]
+	r.mu.Unlock()
+	if !ok {
+		return domain.SequenceRun{}, false, fmt.Errorf("sequence not found: %s", sequenceID)
+	}
+	<-st.settled
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return cloneRun(st.run), st.run.Status != domain.SequenceRunning, nil
 }
 
 // List returns the most recent sequence of every repository.

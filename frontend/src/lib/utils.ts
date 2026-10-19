@@ -25,3 +25,12 @@ export function formatDuration(ms: number) {
   const h = Math.floor(m / 60)
   return `${h}h ${String(m % 60).padStart(2, "0")}m`
 }
+
+/** Countdown text: "29:59", or "1:02:03" past an hour. */
+export function formatCountdown(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  return `${h ? `${h}:${String(m).padStart(2, "0")}` : m}:${String(s).padStart(2, "0")}`
+}

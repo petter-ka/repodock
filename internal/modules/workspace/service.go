@@ -136,7 +136,7 @@ func normalize(state *domain.Workspace) {
 			state.Groups[i].ID = uuid.NewString()
 		}
 		if !state.Groups[i].RunMode.Valid() {
-			state.Groups[i].RunMode = domain.GroupRunSequential
+			state.Groups[i].RunMode = domain.GroupRunParallel
 		}
 		groupIndex[state.Groups[i].ID] = i
 	}
@@ -156,6 +156,9 @@ func normalize(state *domain.Workspace) {
 		}
 		if repo.QuickCommands == nil {
 			repo.QuickCommands = []domain.QuickCommand{}
+		}
+		if repo.Stack == nil {
+			repo.Stack = []string{}
 		}
 		repo.CommandSequence = enabledSteps(repo.CommandSequence)
 		if _, ok := groupIndex[repo.GroupID]; !ok {
@@ -184,6 +187,35 @@ func normalize(state *domain.Workspace) {
 			seen[repo.ID] = true
 		}
 	}
+	// A skip belongs to the group: it is dropped when the repository leaves.
+	for i := range state.Groups {
+		g := &state.Groups[i]
+		members := make(map[string]bool, len(g.RepositoryIDs))
+		for _, id := range g.RepositoryIDs {
+			members[id] = true
+		}
+		skipped := make([]string, 0, len(g.SkippedRepositoryIDs))
+		for _, id := range g.SkippedRepositoryIDs {
+			if members[id] && !containsString(skipped, id) {
+				skipped = append(skipped, id)
+			}
+		}
+		g.SkippedRepositoryIDs = skipped
+		if clean, err := CleanSchedule(g.Schedule); err == nil {
+			g.Schedule = clean
+		} else {
+			g.Schedule = domain.GroupSchedule{Days: []int{}}
+		}
+	}
+}
+
+func containsString(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }
 
 func repoGroup(state *domain.Workspace, id string) string {
@@ -336,7 +368,10 @@ func (s *Service) CreateGroup(name string) (domain.Group, error) {
 	if name == "" {
 		return domain.Group{}, fmt.Errorf("group name cannot be empty")
 	}
-	g := domain.Group{ID: uuid.NewString(), Name: name, RepositoryIDs: []string{}, RunMode: domain.GroupRunSequential}
+	g := domain.Group{
+		ID: uuid.NewString(), Name: name, RepositoryIDs: []string{}, RunMode: domain.GroupRunParallel,
+		SkippedRepositoryIDs: []string{}, Schedule: domain.GroupSchedule{Days: []int{}},
+	}
 	s.mu.Lock()
 	s.state.Groups = append(s.state.Groups, g)
 	s.mu.Unlock()
@@ -414,9 +449,103 @@ func (s *Service) Group(id string) (domain.Group, bool) {
 	if i < 0 {
 		return domain.Group{}, false
 	}
-	g := s.state.Groups[i]
+	return cloneGroup(s.state.Groups[i]), true
+}
+
+// SetRepositorySkipped makes "Run group" leave a repository out (or take
+// it back in). The skip is stored on the repository's current group.
+func (s *Service) SetRepositorySkipped(repoID string, skipped bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.repoIndex(repoID)
+	if r < 0 {
+		return fmt.Errorf("repository %s: %w", repoID, ErrNotFound)
+	}
+	g := s.groupIndex(s.state.Repositories[r].GroupID)
+	if g < 0 {
+		return fmt.Errorf("group %s: %w", s.state.Repositories[r].GroupID, ErrNotFound)
+	}
+	group := &s.state.Groups[g]
+	group.SkippedRepositoryIDs = removeString(group.SkippedRepositoryIDs, repoID)
+	if skipped {
+		group.SkippedRepositoryIDs = append(group.SkippedRepositoryIDs, repoID)
+	}
+	return nil
+}
+
+// SetRepositoryContinuous marks a repository whose sequence ends in a
+// process that runs until stopped, such as a dev server (ADR-0028).
+func (s *Service) SetRepositoryContinuous(repoID string, continuous bool) error {
+	_, err := s.MutateRepository(repoID, func(repo *domain.Repository) { repo.Continuous = continuous })
+	return err
+}
+
+// SetGroupSchedule replaces a group's schedule after validating it.
+func (s *Service) SetGroupSchedule(id string, schedule domain.GroupSchedule) (domain.Group, error) {
+	clean, err := CleanSchedule(schedule)
+	if err != nil {
+		return domain.Group{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := s.groupIndex(id)
+	if i < 0 {
+		return domain.Group{}, fmt.Errorf("group %s: %w", id, ErrNotFound)
+	}
+	s.state.Groups[i].Schedule = clean
+	return cloneGroup(s.state.Groups[i]), nil
+}
+
+// CleanSchedule validates a schedule: days are weekday numbers (0 = Sunday)
+// and are sorted and deduplicated; an enabled start or stop needs a valid
+// "HH:MM" time and at least one day. Times of disabled parts are kept, so
+// switching a part back on restores them, but must still be blank or valid.
+func CleanSchedule(schedule domain.GroupSchedule) (domain.GroupSchedule, error) {
+	var seen [7]bool
+	for _, day := range schedule.Days {
+		if day < 0 || day > 6 {
+			return domain.GroupSchedule{}, fmt.Errorf("unknown weekday %d", day)
+		}
+		seen[day] = true
+	}
+	schedule.Days = []int{}
+	for day, ok := range seen {
+		if ok {
+			schedule.Days = append(schedule.Days, day)
+		}
+	}
+	for _, part := range []struct {
+		name    string
+		enabled bool
+		at      *string
+	}{{"start", schedule.StartEnabled, &schedule.StartAt}, {"stop", schedule.StopEnabled, &schedule.StopAt}} {
+		*part.at = strings.TrimSpace(*part.at)
+		if *part.at == "" {
+			if part.enabled {
+				return domain.GroupSchedule{}, fmt.Errorf("pick a %s time", part.name)
+			}
+			continue
+		}
+		hour, minute, ok := domain.ParseClock(*part.at)
+		if !ok {
+			return domain.GroupSchedule{}, fmt.Errorf("%s time %q is not a valid HH:MM time", part.name, *part.at)
+		}
+		*part.at = fmt.Sprintf("%02d:%02d", hour, minute)
+	}
+	if (schedule.StartEnabled || schedule.StopEnabled) && len(schedule.Days) == 0 {
+		return domain.GroupSchedule{}, fmt.Errorf("pick at least one day for the schedule")
+	}
+	if schedule.StartEnabled && schedule.StopEnabled && schedule.StartAt == schedule.StopAt {
+		return domain.GroupSchedule{}, fmt.Errorf("start and stop times must differ")
+	}
+	return schedule, nil
+}
+
+func cloneGroup(g domain.Group) domain.Group {
 	g.RepositoryIDs = append([]string{}, g.RepositoryIDs...)
-	return g, true
+	g.SkippedRepositoryIDs = append([]string{}, g.SkippedRepositoryIDs...)
+	g.Schedule.Days = append([]int{}, g.Schedule.Days...)
+	return g
 }
 
 // AssignRepository moves a repository to the end of the given group.
@@ -714,6 +843,7 @@ func cloneRepo(repo domain.Repository) domain.Repository {
 		repo.CommandSequence = append([]domain.CommandStep{}, repo.CommandSequence...)
 	}
 	repo.QuickCommands = append([]domain.QuickCommand{}, repo.QuickCommands...)
+	repo.Stack = append([]string{}, repo.Stack...)
 	return repo
 }
 

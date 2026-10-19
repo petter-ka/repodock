@@ -13,6 +13,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
 //go:embed all:frontend/dist
@@ -25,8 +26,14 @@ func main() {
 		app.RunWatchdog(os.Args)
 		return
 	}
+	// `repodock <folder>` offers to add the folder (ADR-0026). Paths are
+	// made absolute first because a second launch forwards its arguments to
+	// the running instance without its working directory.
+	os.Args = app.AbsoluteArgs(os.Args)
 	application := app.New()
+	app.QueueLaunchArgs(application, os.Args[1:])
 	onStartup, onBeforeClose, onShutdown := app.Hooks(application)
+	onSecondInstance, onFileOpen := app.LaunchHooks(application)
 
 	err := wails.Run(&options.App{
 		Title:            "RepoDock",
@@ -43,6 +50,14 @@ func main() {
 		// of a window that looks frozen while they stop (ADR-0023).
 		OnBeforeClose: onBeforeClose,
 		OnShutdown:    onShutdown,
+		// One RepoDock per workspace file; launching it again hands the
+		// arguments to the running one.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               app.InstanceID(application),
+			OnSecondInstanceLaunch: onSecondInstance,
+		},
+		// DisableZoom keeps the window as it was without Mac options.
+		Mac: &mac.Options{OnFileOpen: onFileOpen, DisableZoom: true},
 		Bind: []interface{}{
 			application,
 		},

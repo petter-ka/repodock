@@ -2,6 +2,7 @@ import { errorMessage } from "@/lib/bridge"
 import type { ModuleContext } from "@/lib/module"
 import { repositoryApi } from "./api"
 import { processStore } from "./store/processStore"
+import { scheduleStore } from "./store/scheduleStore"
 import { workspaceStore } from "./store/workspaceStore"
 
 /** Subscribes to backend events and hydrates the stores. */
@@ -17,6 +18,7 @@ export function connectRepositoryManager({ notify, t, f }: ModuleContext) {
     repositoryApi.on("process:stats", (snapshot) => processStore.applyStats(snapshot)),
     repositoryApi.on("process:exited", (exit) => processStore.applyExit(exit)),
     repositoryApi.on("sequence:updated", (sequence) => processStore.applySequence(sequence)),
+    repositoryApi.on("schedule:status", (statuses) => scheduleStore.set(statuses)),
     repositoryApi.on("group:updated", (run) => {
       const previous = processStore.groupRun(run.groupId)
       processStore.applyGroupRun(run)
@@ -32,10 +34,12 @@ export function connectRepositoryManager({ notify, t, f }: ModuleContext) {
 
   void (async () => {
     try {
-      const [workspace, runs, snapshots, sequences, groupRuns, report] = await Promise.all([
+      const [workspace, runs, snapshots, sequences, groupRuns, report, statuses] = await Promise.all([
         repositoryApi.workspace(), repositoryApi.runs(), repositoryApi.snapshots(), repositoryApi.sequences(), repositoryApi.groupRuns(), repositoryApi.startupReport(),
+        repositoryApi.scheduleStatuses(),
       ])
       workspaceStore.setWorkspace(workspace)
+      scheduleStore.set(statuses)
       processStore.hydrate(runs, snapshots, sequences, groupRuns)
       if (announced) return
       announced = true

@@ -24,6 +24,7 @@ import (
 	processmod "github.com/example/repodock/internal/modules/process"
 	"github.com/example/repodock/internal/modules/process/guard"
 	repomod "github.com/example/repodock/internal/modules/repository"
+	schedulemod "github.com/example/repodock/internal/modules/schedule"
 	seqmod "github.com/example/repodock/internal/modules/sequence"
 	workspacemod "github.com/example/repodock/internal/modules/workspace"
 	"github.com/google/uuid"
@@ -43,6 +44,7 @@ type App struct {
 	sequence  *seqmod.Runner
 	host      *hostmod.Service
 	jwt       *jwtmod.Service
+	schedule  *schedulemod.Scheduler
 	// guard kills leftover process groups after a crash (ADR-0019); nil in tests.
 	guard *guard.Guard
 
@@ -53,6 +55,13 @@ type App struct {
 	// closeMu guards closeState, the progress of a quit (closing.go).
 	closeMu    sync.Mutex
 	closeState closeState
+
+	// launchMu guards launchFolders, folders handed to RepoDock on its
+	// command line (or a second launch) waiting for the user (launch.go).
+	launchMu      sync.Mutex
+	launchFolders []string
+	// launchSeen is when each folder was last handed over (duplicates).
+	launchSeen map[string]time.Time
 }
 
 func New() *App {
@@ -93,6 +102,7 @@ func NewWith(ws *workspacemod.Service, opts processmod.Options) *App {
 		jwt:       jwtmod.New(filepath.Join(filepath.Dir(ws.Path()), "jwt-tool.json")),
 	}
 	a.sequence = seqmod.New(stepExecutor{a})
+	a.schedule = schedulemod.New(scheduleHost{a}, time.Now)
 	return a
 }
 
@@ -107,6 +117,7 @@ func (a *App) startup(ctx context.Context) {
 	emit := func(event string, payload any) { runtime.EventsEmit(ctx, event, payload) }
 	a.process.SetEmitter(emit)
 	a.sequence.SetEmitter(emit)
+	a.schedule.SetEmitter(emit)
 	leftovers := a.startGuard()
 	a.boot()
 	if leftovers > 0 {
@@ -114,6 +125,7 @@ func (a *App) startup(ctx context.Context) {
 		a.report.Warnings = append(a.report.Warnings, fmt.Sprintf("Stopped %d process group(s) left running by the previous session.", leftovers))
 		a.reportMu.Unlock()
 	}
+	a.schedule.Start(scheduleInterval * time.Second)
 	a.handleSignals(ctx)
 }
 
@@ -171,6 +183,8 @@ func (a *App) boot() {
 
 func (a *App) shutdown(_ context.Context) {
 	a.shutdownOnce.Do(func() {
+		// No scheduled start may race the shutdown.
+		a.schedule.Stop()
 		a.process.Shutdown(shutdownGrace)
 		if a.guard != nil {
 			// Descendants that left their process group carry the session
@@ -583,6 +597,9 @@ func applyMetadata(repo *domain.Repository, meta repomod.Metadata) {
 	repo.Path = meta.Path
 	repo.PackageManager = meta.PackageManager
 	repo.Scripts = meta.Scripts
+	repo.Dependencies = meta.Dependencies
+	repo.DevDependencies = meta.DevDependencies
+	repo.Stack = meta.Stack
 	repo.Problem = ""
 	repo.LastRefreshedAt = time.Now().UTC().Format(time.RFC3339)
 }

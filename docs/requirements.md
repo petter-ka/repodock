@@ -48,6 +48,11 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-24 | Resize the repository sidebar | P2 |
 | FR-25 | Mini apps: toggleable, draggable, non-blocking floating tools; first app kills a process by PID or port | P1 |
 | FR-26 | JWT tool mini app: generate test tokens with selectable roles and decode/verify tokens; input is remembered | P2 |
+| FR-27 | Mark repositories of a group as skipped when the group runs | P1 |
+| FR-28 | Start and stop a group at set times on chosen days, with a countdown before a stop | P1 |
+| FR-29 | Accept a folder on the command line and ask which group it goes to | P1 |
+| FR-30 | Show a grouped workspace dashboard as the default "All repositories" view | P1 |
+| FR-31 | Mark repositories as continuous (dev servers) so group runs do not wait for them; parallel group runs by default | P1 |
 
 ## Non-functional requirements
 
@@ -139,6 +144,35 @@ Needs enough observability to diagnose runaway local dev processes.
   - all fields, roles and keys are remembered on this computer (0600 file, not exported);
   - Decode shows header, payload, issue/expiry time and expired state, and verifies the signature with the configured key (valid / invalid / not verified); decoding a token fills the Encode form from it (fields, expiry, algorithm, roles added to the catalogue and selected, other claims as extra claims; keys unchanged);
   - the generated token can be copied or opened in the decoder.
+
+- FR-27 (2026-10-19): see ADR-0024. Acceptance criteria:
+  - a repository can be marked "skipped when the group runs" from its menu, and every member can be toggled from the group's "Repositories in group run" submenu;
+  - "Run group" leaves skipped members out (shown as skipped in the run); they can still be run on their own; a group where nothing would run is rejected with a clear message;
+  - the skip is stored on the group and dropped when the repository moves to another group; skipped rows are visibly marked in the sidebar.
+
+- FR-28 (2026-10-19): see ADR-0025. Acceptance criteria:
+  - a group's schedule has a start time and/or a stop time (each can be switched on and off) and the days it applies to: every day, weekdays, weekends, or any custom set of weekdays;
+  - at the start time RepoDock runs the group (unless it is already running); at the stop time it stops every process of the group; schedules act only while RepoDock is open;
+  - 30 minutes before a stop of a running group a countdown dialog appears with postpone (+15/+30/+60 min), "Skip this time" and "Stop now"; it can be hidden into a corner pill and returns at 5 minutes and 1 minute left; idle groups are not announced;
+  - the schedule dialog previews the day on a 24-hour strip and shows the next start and stop; scheduled groups show a clock in the sidebar; schedule actions are announced as notifications;
+  - the countdown's "Cancel this stop" keeps everything running and the schedule continues next time;
+  - the next start or stop can be cancelled at any time ahead (sidebar clock menu, or the × on a dashboard group card's chip) and restored with Undo; cancelled ones are shown struck through and the clock turns amber.
+
+- FR-29 (2026-10-19): see ADR-0026. Acceptance criteria:
+  - `repodock <folder>` (relative or absolute; a file means its folder) shows "Add this folder?" with the folder's details and a group choice (existing groups, or a new group by name), defaulting to the group with neighbouring folders;
+  - launching RepoDock again while it runs focuses the running window and hands it the folder; only one RepoDock runs per workspace file;
+  - a missing or unusable folder is reported; an already registered folder offers to open it or to add another record.
+
+- FR-30 (2026-10-19): see ADR-0027. Acceptance criteria:
+  - "All repositories" opens on a Dashboard tab; the previous processes and console view is the second tab;
+  - the dashboard shows workspace totals, readiness per group, a weekly schedule chart, package managers, tech stack, dependencies per group, a card per group with its members, schedule and run controls, and the repositories needing attention;
+  - charts support light and dark themes, have legends or direct labels and hover tooltips, and each can be shown as a table.
+
+- FR-31 (2026-10-19): see ADR-0028. Acceptance criteria:
+  - a repository can be marked "Runs continuously (dev server)" from its menu and shows an ∞ marker;
+  - in a group run, a continuous repository is up once its last step has started (earlier steps must succeed); the group run does not wait for it to exit, sequential groups continue with the next member, and the group finishes;
+  - the sidebar progress counter leaves continuous members out and shows how many are up;
+  - new groups (and groups or imports without a stored mode) run in parallel.
 
 ## Empty command semantics
 

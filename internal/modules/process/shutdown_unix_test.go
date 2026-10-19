@@ -3,6 +3,7 @@
 package process
 
 import (
+	"github.com/example/repodock/internal/testsupport"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 // A shell that exits while leaving a child in its group (a typical ghost
 // holding a port) must still be killed on shutdown.
 func TestShutdownKillsChildrenLeftByExitedShell(t *testing.T) {
+	testsupport.E2E(t)
 	m := New(Options{StatsInterval: time.Second, OutputInterval: 10 * time.Millisecond, StopGrace: 200 * time.Millisecond, RetainFinished: 10})
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
 	run, err := m.Start(Spec{RepositoryID: "repo", Workdir: t.TempDir(), Command: "sh -c 'trap \"\" TERM; exec sleep 60' & echo $! > " + pidFile, Label: "ghost"})

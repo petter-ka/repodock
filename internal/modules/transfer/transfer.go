@@ -66,6 +66,8 @@ type DocumentRepository struct {
 	// QuickCommands are the pinned chips (version 3+). GlobalCommand refers
 	// to the document's globalCommands[].id, as in steps.
 	QuickCommands []domain.QuickCommand `json:"quickCommands,omitempty"`
+	// Continuous marks a long-running repository (version 3+, ADR-0028).
+	Continuous bool `json:"continuous,omitempty"`
 	// Path uses forward slashes; a leading "~/" means the user's home folder.
 	Path            string               `json:"path"`
 	CommandSequence []domain.CommandStep `json:"commandSequence"`
@@ -98,7 +100,7 @@ func Build(ws domain.Workspace, groupIDs []string, home string, now time.Time) (
 			if repo.CommandSequence == nil {
 				steps = nil
 			}
-			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Alias: repo.Alias, PlainFolder: repo.PackageManager == "", QuickCommands: quickOrNil(repo.QuickCommands), Path: portablePath(repo.Path, home), CommandSequence: steps})
+			out.Repositories = append(out.Repositories, DocumentRepository{Name: repo.Name, Alias: repo.Alias, PlainFolder: repo.PackageManager == "", QuickCommands: quickOrNil(repo.QuickCommands), Continuous: repo.Continuous, Path: portablePath(repo.Path, home), CommandSequence: steps})
 		}
 		doc.Groups = append(doc.Groups, out)
 	}
@@ -192,8 +194,8 @@ func Parse(data []byte) (Document, error) {
 			if strings.TrimSpace(repo.Path) == "" {
 				return doc, fmt.Errorf("%s: path is empty", where)
 			}
-			if (repo.Alias != "" || repo.PlainFolder || len(repo.QuickCommands) > 0) && doc.Version < 3 {
-				return doc, fmt.Errorf("%s: aliases, plain folders and quick commands require export version 3", where)
+			if (repo.Alias != "" || repo.PlainFolder || repo.Continuous || len(repo.QuickCommands) > 0) && doc.Version < 3 {
+				return doc, fmt.Errorf("%s: aliases, plain folders, continuous repositories and quick commands require export version 3", where)
 			}
 			if len(repo.QuickCommands) > maxQuickCommands {
 				return doc, fmt.Errorf("%s: more than %d quick commands", where, maxQuickCommands)
@@ -344,7 +346,7 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 		} else {
 			mode := group.RunMode
 			if !mode.Valid() {
-				mode = domain.GroupRunSequential
+				mode = domain.GroupRunParallel
 			}
 			if anchor < 0 {
 				anchor = len(ws.Groups)
@@ -372,6 +374,7 @@ func Merge(doc Document, current domain.Workspace, env Environment, opts domain.
 				Scripts: []domain.Script{}, EnvFiles: []string{},
 				CommandSequence: []domain.CommandStep{},
 				QuickCommands:   sanitizeQuick(repo.QuickCommands, globalIDs),
+				Continuous:      repo.Continuous,
 			}
 			if opts.ImportSequences {
 				record.CommandSequence = sanitizeSteps(repo.CommandSequence, globalIDs)

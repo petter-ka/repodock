@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/example/repodock/internal/modules/process/platform"
+	"github.com/example/repodock/internal/testsupport"
 )
 
 // The test binary doubles as the watchdog, exactly like the app binary.
@@ -54,6 +55,7 @@ func waitGone(t *testing.T, pgid int, within time.Duration) {
 }
 
 func TestWatchdogKillsGroupsWhenRepoDockDies(t *testing.T) {
+	testsupport.E2E(t)
 	g := New(filepath.Join(t.TempDir(), "running.json"))
 	if err := g.StartWatchdog(); err != nil {
 		t.Fatal(err)
@@ -71,6 +73,7 @@ func TestWatchdogKillsGroupsWhenRepoDockDies(t *testing.T) {
 }
 
 func TestWatchdogLeavesGroupsAloneAfterGoodbye(t *testing.T) {
+	testsupport.E2E(t)
 	g := New(filepath.Join(t.TempDir(), "running.json"))
 	if err := g.StartWatchdog(); err != nil {
 		t.Fatal(err)
@@ -85,6 +88,7 @@ func TestWatchdogLeavesGroupsAloneAfterGoodbye(t *testing.T) {
 }
 
 func TestSweepPreviousKillsVerifiedLeftovers(t *testing.T) {
+	testsupport.E2E(t)
 	path := filepath.Join(t.TempDir(), "running.json")
 	previous := New(path)
 	pgid := startGroup(t)
@@ -110,6 +114,7 @@ func TestSweepPreviousKillsVerifiedLeftovers(t *testing.T) {
 }
 
 func TestSweepIgnoresRecordsFromAnotherBoot(t *testing.T) {
+	testsupport.E2E(t)
 	path := filepath.Join(t.TempDir(), "running.json")
 	pgid := startGroup(t)
 	data, _ := json.Marshal(record{BootTime: 1, Entries: []Entry{{PGID: pgid, LeaderStart: startTime(pgid)}}})

@@ -7,12 +7,12 @@ describe("refreshWorkspaceAfterMutation", () => {
     const workspace = (source: string, target: string): Workspace => ({
       version: 1,
       groups: [
-        { id: "source", name: "Source", repositoryIds: source ? ["repo"] : [], collapsed: false, runMode: "sequential" },
-        { id: "target", name: "Target", repositoryIds: target ? ["repo"] : [], collapsed: false, runMode: "sequential" },
+        { id: "source", name: "Source", repositoryIds: source ? ["repo"] : [], collapsed: false, runMode: "sequential", skippedRepositoryIds: [], schedule: null },
+        { id: "target", name: "Target", repositoryIds: target ? ["repo"] : [], collapsed: false, runMode: "sequential", skippedRepositoryIds: [], schedule: null },
       ],
       repositories: [{
         id: "repo", name: "Repo", alias: "", path: "/repo", packageManager: "npm", scripts: [], commandSequence: [],
-        quickCommands: [], envFiles: [], groupId: source ? "source" : "target", lastRefreshedAt: "", problem: "",
+        quickCommands: [], envFiles: [], groupId: source ? "source" : "target", lastRefreshedAt: "", problem: "", dependencies: 0, devDependencies: 0, stack: [], continuous: false,
       }],
       globalCommands: [],
     })

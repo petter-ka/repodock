@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/example/repodock/internal/domain"
+	"github.com/example/repodock/internal/testsupport"
 )
 
 type partialLine struct {
@@ -76,6 +77,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 }
 
 func TestSendInputAnswersPrompt(t *testing.T) {
+	testsupport.E2E(t)
 	requireNode(t)
 	m, rec := newTestManager(t)
 	script := `node -e "process.stdout.write('Continue? (y/n) ');process.stdin.once('data',d=>{console.log('answer:'+String(d).trim());process.exit(0)})"`
@@ -118,6 +120,7 @@ func TestSendInputAnswersPrompt(t *testing.T) {
 }
 
 func TestSecretInputIsMaskedAndCloseInputSendsEOF(t *testing.T) {
+	testsupport.E2E(t)
 	requireNode(t)
 	m, rec := newTestManager(t)
 	script := `node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{console.log('got:'+s.trim().length);process.exit(0)})"`

@@ -30,19 +30,27 @@ func hasEnabledSteps(repo domain.Repository) bool {
 // StartGroup runs the saved sequence of every repository in repos (group
 // order). Sequential mode runs one repository at a time and stops at the
 // first failure; parallel mode starts all of them at once and lets each
-// finish independently. Repositories without enabled steps are skipped.
+// finish independently. Repositories without enabled steps, and those the
+// group skips (ADR-0024), are skipped.
 func (r *Runner) StartGroup(group domain.Group, repos []domain.Repository) (domain.GroupRun, error) {
 	mode := group.RunMode
 	if !mode.Valid() {
-		mode = domain.GroupRunSequential
+		mode = domain.GroupRunParallel
+	}
+	excluded := make(map[string]bool, len(group.SkippedRepositoryIDs))
+	for _, id := range group.SkippedRepositoryIDs {
+		excluded[id] = true
 	}
 	runnable := 0
 	for _, repo := range repos {
-		if hasEnabledSteps(repo) {
+		if hasEnabledSteps(repo) && !excluded[repo.ID] {
 			runnable++
 		}
 	}
 	if runnable == 0 {
+		if len(excluded) > 0 {
+			return domain.GroupRun{}, fmt.Errorf("nothing to run: every repository in this group is skipped or has no enabled sequence steps")
+		}
 		return domain.GroupRun{}, fmt.Errorf("no repository in this group has enabled sequence steps")
 	}
 
@@ -55,11 +63,14 @@ func (r *Runner) StartGroup(group domain.Group, repos []domain.Repository) (doma
 		ID: uuid.NewString(), GroupID: group.ID, Mode: mode, Status: domain.SequenceRunning, StartedAt: time.Now().UTC(),
 	}}
 	for _, repo := range repos {
-		status := domain.StepPending
-		if !hasEnabledSteps(repo) {
-			status = domain.StepSkipped
+		state := domain.GroupRepoState{RepositoryID: repo.ID, Name: repo.DisplayName(), Status: domain.StepPending}
+		state.Continuous = repo.Continuous
+		if excluded[repo.ID] {
+			state.Status, state.Excluded = domain.StepSkipped, true
+		} else if !hasEnabledSteps(repo) {
+			state.Status = domain.StepSkipped
 		}
-		gs.run.Repos = append(gs.run.Repos, domain.GroupRepoState{RepositoryID: repo.ID, Name: repo.DisplayName(), Status: status})
+		gs.run.Repos = append(gs.run.Repos, state)
 	}
 	r.groups[group.ID] = gs
 	snapshot := cloneGroup(gs.run)
@@ -85,7 +96,7 @@ func (r *Runner) executeGroup(gs *groupState, repos []domain.Repository) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				r.awaitMember(gs, i, seqID)
+				r.awaitMember(gs, i, seqID, repo.Continuous)
 			}()
 		}
 		wg.Wait()
@@ -101,7 +112,7 @@ func (r *Runner) executeGroup(gs *groupState, repos []domain.Repository) {
 			if !ok {
 				break
 			}
-			if r.awaitMember(gs, i, seqID) != domain.StepCompleted {
+			if status := r.awaitMember(gs, i, seqID, repo.Continuous); status != domain.StepCompleted && status != domain.StepStarted {
 				break
 			}
 		}
@@ -130,8 +141,16 @@ func (r *Runner) startMember(gs *groupState, i int, repo domain.Repository) (str
 	return seq.ID, true
 }
 
-// awaitMember waits for a member sequence and maps its outcome.
-func (r *Runner) awaitMember(gs *groupState, i int, sequenceID string) domain.StepStatus {
+// awaitMember waits for a member sequence and maps its outcome. A
+// continuous member (a dev server that never exits) only waits until its
+// last step has started; it is then "started" and keeps running (ADR-0028).
+func (r *Runner) awaitMember(gs *groupState, i int, sequenceID string, continuous bool) domain.StepStatus {
+	if continuous {
+		if _, finished, err := r.WaitSettled(sequenceID); err == nil && !finished {
+			r.updateGroup(gs, func() { gs.run.Repos[i].Status = domain.StepStarted })
+			return domain.StepStarted
+		}
+	}
 	final, err := r.Wait(sequenceID)
 	status := domain.StepCompleted
 	message := ""

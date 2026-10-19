@@ -2,6 +2,7 @@
 // React so selection and data survive switching between rail modules.
 import { readPreference, writePreference } from "@/lib/preferences"
 import type { Repository, Workspace } from "../domain"
+import { scheduleOf } from "../schedule"
 
 type State = { workspace: Workspace; selectedRepoId: string | null; loaded: boolean }
 
@@ -28,9 +29,9 @@ class WorkspaceStore {
   setWorkspace(workspace: Workspace) {
     const normalized: Workspace = {
       ...workspace,
-      groups: workspace.groups ?? [],
+      groups: (workspace.groups ?? []).map((group) => ({ ...group, skippedRepositoryIds: group.skippedRepositoryIds ?? [], schedule: scheduleOf(group) })),
       globalCommands: workspace.globalCommands ?? [],
-      repositories: (workspace.repositories ?? []).map((repo) => ({ ...repo, scripts: repo.scripts ?? [], envFiles: repo.envFiles ?? [] })),
+      repositories: (workspace.repositories ?? []).map((repo) => ({ ...repo, scripts: repo.scripts ?? [], envFiles: repo.envFiles ?? [], stack: repo.stack ?? [], continuous: !!repo.continuous })),
     }
     let selected = this.state.selectedRepoId
     if (selected && !normalized.repositories.some((repo) => repo.id === selected)) selected = null

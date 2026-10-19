@@ -24,7 +24,7 @@ func (a *App) CheckRepositoryFolder(path string) domain.FolderCheck {
 	if meta, err := a.repo.Inspect(abs); err != nil && !errors.Is(err, repomod.ErrNoPackageJSON) {
 		check.Problem = err.Error()
 	} else {
-		check.Valid, check.Name = true, meta.Name
+		check.Valid, check.Name, check.PackageJSON = true, meta.Name, err == nil
 	}
 	if existing, ok := a.workspace.RepositoryByPath(abs); ok {
 		check.RegisteredID, check.RegisteredName = existing.ID, existing.DisplayName()

@@ -10,3 +10,6 @@ export const repositoryManagerModule: AppModule = {
   View: RepositoryManagerView,
   init: connectRepositoryManager,
 }
+
+/** Rendered by the shell so it appears over any view (ADR-0026). */
+export { LaunchFolderDialog } from "./components/LaunchFolderDialog"

@@ -3,7 +3,7 @@ import { errorMessage } from "@/lib/bridge"
 import { useI18n } from "@/lib/i18n"
 import { useNotifications } from "@/state/notifications"
 import { repositoryApi } from "../api"
-import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type QuickCommand, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
+import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type Group, type GroupSchedule, type ScheduleKind, type QuickCommand, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
 import { processStore } from "../store/processStore"
 import { refreshWorkspaceAfterMutation, workspaceStore } from "../store/workspaceStore"
 
@@ -70,6 +70,54 @@ export function useRepositoryActions() {
       /** Place a repository at `index` in a group (index excludes the repository itself). */
       move: (repoId: string, groupId: string, index: number) => mutateWorkspace(() => repositoryApi.moveRepository(repoId, groupId, index)),
       setGroupRunMode: (groupId: string, mode: GroupRunMode) => guard(() => repositoryApi.setGroupRunMode(groupId, mode)),
+      /** Leave a repository out of "Run group" (or take it back in). */
+      setSkipped: (repoId: string, skipped: boolean) => mutateWorkspace(() => repositoryApi.setRepositorySkipped(repoId, skipped)),
+      /** Mark a repository as long-running (dev server) for group runs. */
+      setContinuous: (repoId: string, continuous: boolean) => mutateWorkspace(() => repositoryApi.setRepositoryContinuous(repoId, continuous)),
+      /** Saves a group's schedule; true when saved. */
+      async saveSchedule(group: Group, schedule: GroupSchedule) {
+        const saved = await mutateWorkspace(() => repositoryApi.setGroupSchedule(group.id, schedule))
+        if (!saved) return false
+        const on = (schedule.startEnabled || schedule.stopEnabled) && schedule.days.length > 0
+        notify(f(on ? t.schedule.saved : t.schedule.turnedOff, { name: group.name }), { tone: "success" })
+        return true
+      },
+      /**
+       * Cancels a group's next scheduled start or stop ahead of time; `when`
+       * is its display time, for the notification. True when done.
+       */
+      async skipScheduled(group: Group, kind: ScheduleKind, when: string) {
+        const ok = await guard(async () => { await repositoryApi.skipNextScheduled(group.id, kind); return true })
+        if (ok) notify(f(kind === "start" ? t.schedule.startCancelled : t.schedule.stopCancelled, { name: group.name, when }), { tone: "success" })
+        return !!ok
+      },
+      /** Takes back a cancelled start or stop. True when done. */
+      async resumeScheduled(group: Group, kind: ScheduleKind, when: string) {
+        const ok = await guard(async () => { await repositoryApi.resumeScheduled(group.id, kind); return true })
+        if (ok) notify(f(kind === "start" ? t.schedule.startRestored : t.schedule.stopRestored, { name: group.name, when }), { tone: "success" })
+        return !!ok
+      },
+      /**
+       * Adds a folder handed to RepoDock on its command line to an existing
+       * group, or to a new group when `newGroupName` is set. Returns the
+       * repository, selected.
+       */
+      async addLaunchFolder(path: string, groupId: string, newGroupName = "") {
+        let targetId = groupId
+        let groupName = workspaceStore.getState().workspace.groups.find((g) => g.id === groupId)?.name ?? ""
+        if (newGroupName.trim()) {
+          const group = await guard(() => repositoryApi.createGroup(newGroupName.trim()))
+          if (!group) return undefined
+          targetId = group.id
+          groupName = group.name
+        }
+        const repo = await guard(() => repositoryApi.addRepository(path, targetId))
+        if (!repo) return undefined
+        workspaceStore.setWorkspace(await repositoryApi.workspace())
+        workspaceStore.select(repo.id)
+        notify(f(t.launch.added, { name: displayName(repo), group: groupName }), { tone: "success" })
+        return repo
+      },
       async runGroup(groupId: string) {
         const run = await guard(() => repositoryApi.runGroup(groupId))
         if (run) processStore.applyGroupRun(run)

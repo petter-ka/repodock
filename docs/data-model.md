@@ -14,7 +14,12 @@ Workspace
 │   ├── name
 │   ├── repositoryIds[]      # display order within the group (also group-run order)
 │   ├── collapsed
-│   └── runMode              # sequential (default) | parallel — see ADR-0010
+│   ├── runMode              # parallel (default, ADR-0028) | sequential — see ADR-0010
+│   ├── skippedRepositoryIds[] # members "Run group" leaves out — ADR-0024
+│   └── schedule             # ADR-0025
+│       ├── days[]           # 0 = Sunday … 6 = Saturday, sorted
+│       ├── startEnabled, startAt   # "HH:MM" local time
+│       └── stopEnabled, stopAt     # "HH:MM"; a countdown precedes the stop
 └── repositories[]
     ├── id
     ├── name                  # package.json "name", else folder name (refreshed)
@@ -23,6 +28,7 @@ Workspace
     ├── packageManager        # npm | pnpm | yarn | bun; "" = plain folder (no package.json)
     ├── scripts[]             # { name, command } in package.json declaration order
     ├── quickCommands[]       # pinned chips { id, label, script | globalCommand | command } — ADR-0017
+    ├── continuous            # sequence ends in a long-running process (dev server) — ADR-0028
     ├── commandSequence[]     # null = never configured
     │   ├── id, label
     │   ├── script            # package script name (resolved at run time)
@@ -31,6 +37,8 @@ Workspace
     │   ├── enabled
     │   └── background        # start and continue without waiting
     ├── envFiles[]            # discovered allow-listed .env* names
+    ├── dependencies, devDependencies # package.json entry counts (dashboard) — ADR-0027
+    ├── stack[]               # detected frameworks/tools, e.g. "Next.js", "Vite"
     ├── groupId
     ├── lastRefreshedAt
     └── problem               # last refresh error, empty when healthy

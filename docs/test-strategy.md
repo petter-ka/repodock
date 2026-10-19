@@ -11,6 +11,8 @@ React tests should cover repository grouping, script chips, sequence editing, en
 ### Integration
 Run a real temporary repository fixture containing `package.json`, scripts and `.env` files. Execute short commands and verify output, exit status and termination.
 
+Tests that start real OS processes (shells, scripts, the watchdog, sockets) call `testsupport.E2E(t)` first. They are skipped under `go test -short`, which CI and the release workflow use because they depend on runner timing and installed tools. Run them locally with a plain `go test ./...` before changing process execution, the crash guard or host-process tools.
+
 ### Platform smoke
 At least one smoke build/run is required on Windows, macOS and Linux for each release candidate.
 

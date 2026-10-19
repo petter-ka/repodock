@@ -1,6 +1,6 @@
 import { getBackend } from "@/lib/bridge"
 import type { EventMap } from "@/lib/contracts"
-import type { CommandStep, GlobalCommand, GroupRunMode, ImportOptions, QuickCommand } from "./domain"
+import type { CommandStep, GlobalCommand, GroupRunMode, GroupSchedule, ImportOptions, QuickCommand, ScheduleKind } from "./domain"
 
 const api = () => getBackend().api
 
@@ -25,6 +25,13 @@ export const repositoryApi = {
   renameRepository: (id: string, alias: string) => api().RenameRepository(id, alias),
   moveGroup: (id: string, index: number) => api().MoveGroup(id, index),
   setGroupRunMode: (id: string, mode: GroupRunMode) => api().SetGroupRunMode(id, mode),
+  setRepositorySkipped: (repoID: string, skipped: boolean) => api().SetRepositorySkipped(repoID, skipped),
+  setRepositoryContinuous: (repoID: string, continuous: boolean) => api().SetRepositoryContinuous(repoID, continuous),
+  setGroupSchedule: (groupID: string, schedule: GroupSchedule) => api().SetGroupSchedule(groupID, schedule),
+  takeLaunchFolders: () => api().TakeLaunchFolders(),
+  scheduleStatuses: () => api().ScheduleStatuses(),
+  skipNextScheduled: (groupID: string, kind: ScheduleKind) => api().SkipNextScheduled(groupID, kind),
+  resumeScheduled: (groupID: string, kind: ScheduleKind) => api().ResumeScheduled(groupID, kind),
   runGroup: (groupID: string) => api().RunGroup(groupID),
   stopGroup: (groupID: string) => api().StopGroup(groupID),
   groupRuns: () => api().GroupRuns(),

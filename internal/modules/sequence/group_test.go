@@ -116,3 +116,77 @@ func TestGroupWithoutEnabledStepsIsRejected(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestGroupLeavesOutSkippedMembers(t *testing.T) {
+	fake := newFake()
+	r := New(fake)
+	group := domain.Group{ID: "g", RunMode: domain.GroupRunSequential, SkippedRepositoryIDs: []string{"b"}}
+	repos := []domain.Repository{member("a", "one"), member("b", "two"), member("c", "three")}
+
+	started, err := r.StartGroup(group, repos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !started.Repos[1].Excluded || started.Repos[1].Status != domain.StepSkipped || started.Repos[0].Excluded {
+		t.Fatalf("started = %#v", started.Repos)
+	}
+	final, _ := r.WaitGroup("g")
+	if got := repoStatuses(final); got != "a=completed b=skipped c=completed " {
+		t.Fatalf("statuses = %s", got)
+	}
+	if fmt.Sprint(fake.startedCommands()) != "[one three]" {
+		t.Fatalf("started = %v", fake.startedCommands())
+	}
+}
+
+func TestGroupWithEveryMemberSkippedIsRejected(t *testing.T) {
+	r := New(newFake())
+	group := domain.Group{ID: "g", SkippedRepositoryIDs: []string{"a"}}
+	if _, err := r.StartGroup(group, []domain.Repository{member("a", "one"), member("empty")}); err == nil {
+		t.Fatal("expected an error when nothing would run")
+	}
+}
+
+func TestContinuousMemberIsUpOnceItsLastStepRuns(t *testing.T) {
+	for _, mode := range []domain.GroupRunMode{domain.GroupRunSequential, domain.GroupRunParallel} {
+		t.Run(string(mode), func(t *testing.T) {
+			fake := newFake()
+			r := New(fake)
+			server := member("web", "install", "block") // "block" never exits, like `npm run dev`
+			server.Continuous = true
+			group := domain.Group{ID: "g", RunMode: mode}
+
+			done := make(chan domain.GroupRun, 1)
+			if _, err := r.StartGroup(group, []domain.Repository{server, member("api", "build")}); err != nil {
+				t.Fatal(err)
+			}
+			go func() { final, _ := r.WaitGroup("g"); done <- final }()
+			select {
+			case final := <-done:
+				if got := repoStatuses(final); got != "web=started api=completed " || final.Status != domain.SequenceCompleted || !final.Repos[0].Continuous {
+					t.Fatalf("final = %s %s", got, final.Status)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the group run waited for a continuous member to exit")
+			}
+			// The dev server is still running; the earlier step had to finish first.
+			if got := fmt.Sprint(fake.startedCommands()); mode == domain.GroupRunSequential && got != "[install block build]" {
+				t.Fatalf("started = %s", got)
+			}
+			_ = r.CancelRepository("web")
+		})
+	}
+}
+
+func TestContinuousMemberFailingBeforeItsServerStartsFailsTheGroup(t *testing.T) {
+	r := New(newFake())
+	server := member("web", "fail", "block")
+	server.Continuous = true
+	if _, err := r.StartGroup(domain.Group{ID: "g", RunMode: domain.GroupRunSequential}, []domain.Repository{server, member("api", "build")}); err != nil {
+		t.Fatal(err)
+	}
+	final, _ := r.WaitGroup("g")
+	if got := repoStatuses(final); got != "web=failed api=cancelled " {
+		t.Fatalf("statuses = %s", got)
+	}
+}

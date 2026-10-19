@@ -1,10 +1,12 @@
-import { FolderPlus, LayoutGrid } from "lucide-react"
+import { FolderPlus, LayoutDashboard, LayoutGrid, SquareTerminal } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { useI18n } from "@/lib/i18n"
 import { modLabel, useShortcuts } from "@/lib/keyboard"
+import { readPreference, writePreference } from "@/lib/preferences"
+import { cn } from "@/lib/utils"
 import { CommandInput } from "../components/CommandInput"
 import { ConsoleView } from "../components/ConsoleView"
 import { EnvSheet } from "../components/EnvSheet"
@@ -17,6 +19,7 @@ import { SequenceChips } from "../components/SequenceChips"
 import { QuickCommands } from "../components/QuickCommands"
 import { BackgroundSheet } from "../components/BackgroundSheet"
 import { SequenceSheet } from "../components/SequenceSheet"
+import { Dashboard } from "../components/dashboard/Dashboard"
 import { displayName, isActive, type Repository } from "../domain"
 import { useRepositoryActions } from "../hooks/useRepositoryActions"
 import { useProcessVersion, useSelectedRepository, useWorkspaceState } from "../hooks/useStores"
@@ -149,31 +152,43 @@ function RepositoryPane({ repo, actions, commandRef }: {
   )
 }
 
-/** Shown when no repository is selected: global processes and console. */
+type OverviewTab = "dashboard" | "console"
+const TAB_KEY = "overview.tab"
+
+/**
+ * Shown when no repository is selected: the workspace dashboard (default)
+ * and, in a second tab, every process with the combined console.
+ */
 function OverviewPane({ actions }: { actions: ReturnType<typeof useRepositoryActions> }) {
   const { t, f } = useI18n()
   const { workspace, loaded } = useWorkspaceState()
   const version = useProcessVersion()
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-
-  const repoNames = useMemo(() => new Map(workspace.repositories.map((r) => [r.id, displayName(r)])), [workspace.repositories])
-  const { runs, snapshots } = useMemo(() => {
+  const [tab, setTabState] = useState<OverviewTab>(() => (readPreference(TAB_KEY) === "console" ? "console" : "dashboard"))
+  const setTab = (next: OverviewTab) => {
+    setTabState(next)
+    writePreference(TAB_KEY, next)
+  }
+  const active = useMemo(() => {
     void version
-    const runs = processStore.runsFor()
-    const snapshots = new Map(runs.map((run) => [run.id, processStore.snapshot(run.id)]).filter((e): e is [string, NonNullable<ReturnType<typeof processStore.snapshot>>] => !!e[1]))
-    return { runs, snapshots }
+    return processStore.activeCount()
   }, [version])
-  const active = runs.filter((run) => isActive(run.status)).length
-
-  useEffect(() => {
-    if (selectedRunId && !runs.some((run) => run.id === selectedRunId)) setSelectedRunId(null)
-  }, [runs, selectedRunId])
 
   const empty = loaded && workspace.repositories.length === 0
+  const tabs: Array<{ id: OverviewTab; label: string; icon: React.ReactNode; badge?: number }> = [
+    { id: "dashboard", label: t.dashboard.tab, icon: <LayoutDashboard className="size-4" /> },
+    { id: "console", label: t.dashboard.consoleTab, icon: <SquareTerminal className="size-4" />, badge: active },
+  ]
+  const onTabKey = (event: React.KeyboardEvent) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+    event.preventDefault()
+    const next = tab === "dashboard" ? "console" : "dashboard"
+    setTab(next)
+    document.getElementById(`overview-tab-${next}`)?.focus()
+  }
 
-  return (
-    <>
-      {empty ? (
+  if (empty) {
+    return (
+      <>
         <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
           <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-accent">
             <FolderPlus className="size-6 text-muted-foreground" />
@@ -186,14 +201,72 @@ function OverviewPane({ actions }: { actions: ReturnType<typeof useRepositoryAct
           </Button>
           <p className="mt-6 text-xs text-muted-foreground">{t.welcome.consoleHint}</p>
         </div>
-      ) : (
-        <header className="flex items-center gap-3 border-b border-border px-6 py-5">
-          <LayoutGrid className="size-5 text-muted-foreground" />
+        <ProcessesAndConsole actions={actions} />
+      </>
+    )
+  }
+
+  return (
+    <>
+      <header className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
+        <LayoutGrid className="size-5 text-muted-foreground" />
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">{t.console.allRepos}</h1>
-          <Badge className="tabular-nums">{f(t.sidebar.count, { count: workspace.repositories.length })}</Badge>
-          {active > 0 && <Badge variant="success" className="tabular-nums">{f(t.sidebar.running, { count: active })}</Badge>}
-        </header>
-      )}
+          <p className="text-xs text-muted-foreground">{t.dashboard.subtitle}</p>
+        </div>
+        <Badge className="tabular-nums">{f(t.sidebar.count, { count: workspace.repositories.length })}</Badge>
+        {active > 0 && <Badge variant="success" className="tabular-nums">{f(t.sidebar.running, { count: active })}</Badge>}
+        <div role="tablist" aria-label={t.console.allRepos} className="ml-auto inline-flex rounded-xl border border-border bg-background p-1" onKeyDown={onTabKey}>
+          {tabs.map((item) => (
+            <button
+              key={item.id}
+              id={`overview-tab-${item.id}`}
+              role="tab"
+              aria-selected={tab === item.id}
+              aria-controls={`overview-panel-${item.id}`}
+              tabIndex={tab === item.id ? 0 : -1}
+              onClick={() => setTab(item.id)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring",
+                tab === item.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {item.icon}
+              {item.label}
+              {!!item.badge && (
+                <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", tab === item.id ? "bg-primary-foreground/20" : "bg-success/15 text-success")}>{item.badge}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </header>
+      <div id={`overview-panel-${tab}`} role="tabpanel" aria-labelledby={`overview-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
+        {tab === "dashboard" ? <Dashboard workspace={workspace} actions={actions} /> : <ProcessesAndConsole actions={actions} />}
+      </div>
+    </>
+  )
+}
+
+/** Every process across repositories and the combined console. */
+function ProcessesAndConsole({ actions }: { actions: ReturnType<typeof useRepositoryActions> }) {
+  const { workspace } = useWorkspaceState()
+  const version = useProcessVersion()
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+
+  const repoNames = useMemo(() => new Map(workspace.repositories.map((r) => [r.id, displayName(r)])), [workspace.repositories])
+  const { runs, snapshots } = useMemo(() => {
+    void version
+    const runs = processStore.runsFor()
+    const snapshots = new Map(runs.map((run) => [run.id, processStore.snapshot(run.id)]).filter((e): e is [string, NonNullable<ReturnType<typeof processStore.snapshot>>] => !!e[1]))
+    return { runs, snapshots }
+  }, [version])
+
+  useEffect(() => {
+    if (selectedRunId && !runs.some((run) => run.id === selectedRunId)) setSelectedRunId(null)
+  }, [runs, selectedRunId])
+
+  return (
+    <>
       <ProcessStrip
         runs={runs}
         snapshots={snapshots}

@@ -164,7 +164,8 @@ REPODOCK_WORKSPACE=/tmp/repodock-dev.json wails dev
 ## Tests
 
 ```bash
-go test ./...                 # unit + real-process integration tests
+go test ./...                 # unit + real-process end-to-end tests
+go test -short ./...          # unit tests only (what CI runs)
 cd frontend && npm test       # Vitest: process store, ANSI parser, env masking
 ```
 

@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/example/repodock/internal/domain"
+	"github.com/example/repodock/internal/testsupport"
 )
 
 // Regression for "the first custom command is skipped": a custom command
 // step moved before a long-running script must run first, to completion,
 // and only then the next step starts.
 func TestSequenceRunsCustomCommandFirstInSavedOrder(t *testing.T) {
+	testsupport.E2E(t)
 	a := newTestApp(t)
 	dir := fixture(t)
 	repo, err := a.AddRepository(dir, "")

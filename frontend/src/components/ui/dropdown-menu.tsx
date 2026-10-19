@@ -34,6 +34,17 @@ export function DropdownMenuRadioItem({ className, children, ...props }: React.C
   )
 }
 
+export function DropdownMenuCheckboxItem({ className, children, ...props }: React.ComponentProps<typeof Menu.CheckboxItem>) {
+  return (
+    <Menu.CheckboxItem className={cn(item, "pl-8 relative", className)} {...props}>
+      <span className="absolute left-2.5 flex size-4 items-center justify-center">
+        <Menu.ItemIndicator><Check /></Menu.ItemIndicator>
+      </span>
+      {children}
+    </Menu.CheckboxItem>
+  )
+}
+
 export function DropdownMenuSubTrigger({ className, children, ...props }: React.ComponentProps<typeof Menu.SubTrigger>) {
   return (
     <Menu.SubTrigger className={cn(item, "data-[state=open]:bg-accent", className)} {...props}>

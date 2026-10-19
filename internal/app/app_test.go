@@ -15,6 +15,7 @@ import (
 	"github.com/example/repodock/internal/domain"
 	processmod "github.com/example/repodock/internal/modules/process"
 	workspacemod "github.com/example/repodock/internal/modules/workspace"
+	"github.com/example/repodock/internal/testsupport"
 )
 
 func fixture(t *testing.T) string {
@@ -135,6 +136,7 @@ func TestAddRepositoryDiscoversAndAllowsDuplicates(t *testing.T) {
 }
 
 func TestOpenRepositoryInVSCode(t *testing.T) {
+	testsupport.E2E(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a shell executable as a test double")
 	}
@@ -193,6 +195,7 @@ func TestEnvironmentRoundTrip(t *testing.T) {
 }
 
 func TestRunScriptAndSequence(t *testing.T) {
+	testsupport.E2E(t)
 	if _, err := exec.LookPath("npm"); err != nil {
 		t.Skip("npm is not available")
 	}
@@ -250,6 +253,7 @@ func TestRunScriptAndSequence(t *testing.T) {
 }
 
 func TestRunGroupModes(t *testing.T) {
+	testsupport.E2E(t)
 	a := newTestApp(t)
 	first, err := a.AddRepository(fixture(t), "")
 	if err != nil {
@@ -452,6 +456,7 @@ func TestImportWithPathOverride(t *testing.T) {
 }
 
 func TestGlobalCommandSteps(t *testing.T) {
+	testsupport.E2E(t)
 	a := newTestApp(t)
 	repo, err := a.AddRepository(fixture(t), "")
 	if err != nil {
@@ -603,6 +608,7 @@ func TestExportImportPreservesEverything(t *testing.T) {
 }
 
 func TestKillHostProcessStopsOwningRun(t *testing.T) {
+	testsupport.E2E(t)
 	if os.Getenv("GOOS") == "windows" {
 		t.Skip("POSIX shell")
 	}

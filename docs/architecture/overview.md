@@ -57,6 +57,12 @@ Responsibilities:
 - Report per-step state; cancel on request.
 - Run all repositories of a group sequentially or in parallel (ADR-0010).
 
+### schedule
+Responsibilities:
+- Start and stop groups at their scheduled times (ADR-0025).
+- Announce stops of running groups 30 minutes ahead; postpone, skip or stop now.
+- Depends on domain only; the app facade implements its `Host`.
+
 ### transfer
 Responsibilities:
 - Build, validate, plan and merge export documents (ADR-0011).
@@ -84,6 +90,8 @@ The backend emits events instead of forcing polling for output:
 - `process:exited`
 - `sequence:updated`
 - `group:updated`
+- `schedule:pending`, `schedule:fired`
+- `launch:folder`
 - `workspace:changed`
 
 Event payloads must be versionable and include IDs so the frontend can reconcile out-of-order deliveries.

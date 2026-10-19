@@ -1,11 +1,11 @@
-import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, CircleStop, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, Code2, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { AlarmClock, AlarmClockOff, AlertTriangle, Infinity as InfinityIcon, ArrowDown, ListChecks, SkipForward, ArrowDownUp, ArrowUp, CheckCircle2, ChevronDown, CircleDot, CircleStop, XCircle, FolderSearch, Download, Globe, Upload, Clock, Columns3, ListOrdered, Loader2, Play, Square, ChevronRight, Code2, FolderGit2, FolderInput, LayoutGrid, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { forwardRef, useMemo, useState, type DragEvent } from "react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { PromptDialog } from "@/components/shared/PromptDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub,
   DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
@@ -21,7 +21,11 @@ import { processStore } from "../store/processStore"
 import { workspaceStore } from "../store/workspaceStore"
 import { latestRunHealth, type RepoHealth } from "../repoStatus"
 import { isNoopSlot, landingIndex, slotFromPointer } from "../reorder"
+import { describeDays, isScheduleActive, scheduleOf } from "../schedule"
 import { GlobalCommandsDialog } from "./GlobalCommandsDialog"
+import { ScheduleDialog } from "./ScheduleDialog"
+import { ScheduleMenuItems } from "./ScheduleNext"
+import { scheduleStore, useScheduleVersion } from "../store/scheduleStore"
 import { ImportDialog } from "./ImportDialog"
 
 type DialogState =
@@ -51,10 +55,12 @@ const MAX_WIDTH = 560
 const clampWidth = (width: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)))
 
 export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryActions }>(function RepoSidebar({ actions }, filterRef) {
-  const { t, f } = useI18n()
+  const { t, f, locale } = useI18n()
   const { workspace, selectedRepoId } = useWorkspaceState()
   const version = useProcessVersion()
   const [query, setQuery] = useState("")
+  const [scheduleGroupId, setScheduleGroupId] = useState<string | null>(null)
+  useScheduleVersion()
   const [dialog, setDialog] = useState<DialogState>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [globalsOpen, setGlobalsOpen] = useState(false)
@@ -221,14 +227,27 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
           const groupRun = processStore.groupRun(group.id)
           const groupRunning = groupRun?.status === "running"
           const memberState = new Map<string, GroupRepoState>(groupRunning ? groupRun.repos.map((r) => [r.repositoryId, r]) : [])
-          const runnable = groupRun?.repos.filter((r) => r.status !== "skipped") ?? []
+          // Long-running members (dev servers) never finish, so the counter
+          // leaves them out; they show as "up" instead (ADR-0028).
+          const members = groupRun?.repos.filter((r) => r.status !== "skipped") ?? []
+          const runnable = members.filter((r) => !r.continuous)
           const finished = runnable.filter((r) => r.status !== "pending" && r.status !== "running").length
+          const up = members.filter((r) => r.continuous && r.status === "started").length
           const modeLabel = group.runMode === "parallel" ? t.groupRun.parallel : t.groupRun.sequential
           // Background steps (dev servers) outlive the group run, so the
           // stop control stays available while any member has processes.
           const groupActive = groupRunning || repos.some((repo) => (running.get(repo.id) ?? 0) > 0)
           const dropSlot = drag?.kind === "repo" && drop?.kind === "repo" && drop.groupId === group.id && !isNoopSlot(drop.slot, drag.groupId === group.id ? drag.from : -1) ? drop.slot : null
           const lastGroup = groupIndex === workspace.groups.length - 1
+          const skipped = new Set(group.skippedRepositoryIds ?? [])
+          const schedule = scheduleOf(group)
+          const scheduled = isScheduleActive(schedule)
+          const scheduleText = scheduled ? f(t.schedule.summary, {
+            days: describeDays(schedule.days, t, locale),
+            parts: [schedule.startEnabled && f(t.schedule.starts, { time: schedule.startAt }), schedule.stopEnabled && f(t.schedule.stops, { time: schedule.stopAt })].filter(Boolean).join(" · "),
+          }) : ""
+          const scheduleStatus = scheduleStore.status(group.id)
+          const anyCancelled = !!scheduleStatus && (scheduleStatus.startSkipped || scheduleStatus.stopSkipped)
           // Dropping a repository anywhere on the section but an item (header,
           // empty list, collapsed group) appends to the group. A group drag
           // over a section inserts above or below it.
@@ -266,10 +285,32 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                   <span className="truncate">{group.name}</span>
                   <span className="ml-1 font-normal tabular-nums opacity-70">{repos.length}</span>
                 </button>
+                {scheduled && (
+                  <DropdownMenu>
+                    <Tooltip label={scheduleText}>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          aria-label={`${t.schedule.menu} ${scheduleText}`}
+                          className={cn(
+                            "flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent",
+                            anyCancelled ? "text-warning" : "text-primary/80 hover:text-primary",
+                          )}
+                        >
+                          {anyCancelled ? <AlarmClockOff className="size-3.5" /> : <AlarmClock className="size-3.5" />}
+                        </button>
+                      </DropdownMenuTrigger>
+                    </Tooltip>
+                    <DropdownMenuContent align="start" className="w-72">
+                      <DropdownMenuLabel>{scheduleText}</DropdownMenuLabel>
+                      <ScheduleMenuItems group={group} status={scheduleStatus} actions={actions} onEdit={() => setScheduleGroupId(group.id)} />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 {groupRunning && (
                   <span className="flex items-center gap-1 text-[10px] tabular-nums text-success" aria-live="polite">
                     <Loader2 className="size-3 animate-spin" />
-                    {f(t.groupRun.progress, { done: finished, total: runnable.length })}
+                    {runnable.length > 0 && f(t.groupRun.progress, { done: finished, total: runnable.length })}
+                    {up > 0 && <span className="inline-flex items-center gap-0.5"><InfinityIcon className="size-3" />{f(t.continuous.up, { count: up })}</span>}
                   </span>
                 )}
                 {repos.length > 0 && (groupActive ? (
@@ -312,6 +353,31 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                         </div>
                       </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger disabled={repos.length === 0}>
+                        <ListChecks /> {t.skip.members}
+                        {skipped.size > 0 && <span className="ml-auto whitespace-nowrap pl-2 text-[11px] tabular-nums text-muted-foreground">{f(t.skip.count, { count: skipped.size })}</span>}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-72">
+                        <p className="px-2.5 pb-1.5 pt-1 text-[11px] leading-snug text-muted-foreground">{t.skip.membersHint}</p>
+                        {repos.map((repo) => (
+                          <DropdownMenuCheckboxItem
+                            key={repo.id}
+                            checked={!skipped.has(repo.id)}
+                            disabled={groupRunning}
+                            // Keep the menu open so several members can be toggled in a row.
+                            onSelect={(event) => event.preventDefault()}
+                            onCheckedChange={(checked) => void actions.setSkipped(repo.id, !checked)}
+                          >
+                            <span className="truncate">{displayName(repo)}</span>
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuItem onSelect={() => setScheduleGroupId(group.id)}>
+                      <AlarmClock /> {t.schedule.menu}
+                      {scheduled && <span className="ml-auto max-w-32 truncate text-[11px] text-muted-foreground">{scheduleText}</span>}
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => void actions.addRepository(group.id)}><Plus /> {t.sidebar.addHere}</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setDialog({ kind: "renameGroup", group })}><Pencil /> {t.sidebar.renameGroup}</DropdownMenuItem>
@@ -337,6 +403,8 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                       running={running.get(repo.id) ?? 0}
                       latest={latest.get(repo.id) ?? null}
                       groupState={memberState.get(repo.id)}
+                      skipped={skipped.has(repo.id)}
+                      groupRunning={groupRunning}
                       actions={actions}
                       onRemove={() => setDialog({ kind: "removeRepo", repo })}
                       onRename={() => setDialog({ kind: "renameRepo", repo })}
@@ -372,6 +440,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
 
       <ImportDialog preview={importPreview} actions={actions} onClose={() => setImportPreview(null)} />
       <GlobalCommandsDialog open={globalsOpen} actions={actions} onOpenChange={setGlobalsOpen} />
+      <ScheduleDialog group={workspace.groups.find((g) => g.id === scheduleGroupId) ?? null} actions={actions} onOpenChange={(open) => { if (!open) setScheduleGroupId(null) }} />
       <PromptDialog
         open={dialog?.kind === "createGroup" || dialog?.kind === "renameGroup"}
         title={dialog?.kind === "renameGroup" ? t.groupDialog.renameTitle : t.groupDialog.createTitle}
@@ -426,7 +495,7 @@ const healthIcon: Record<RepoHealth, React.ReactNode> = {
   danger: <XCircle className="size-4 text-destructive" />,
 }
 
-function RepoItem({ repo, index, groupSize, groups, selected, running, latest, groupState, actions, onRemove, onRename, dragging, dropEdge, onDragStart, onDragOver, onDragEnd }: {
+function RepoItem({ repo, index, groupSize, groups, selected, running, latest, groupState, skipped, groupRunning, actions, onRemove, onRename, dragging, dropEdge, onDragStart, onDragOver, onDragEnd }: {
   repo: Repository
   /** position within its group */
   index: number
@@ -438,6 +507,9 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
   latest: ReturnType<typeof latestRunHealth>
   /** this repository's state in a running group run */
   groupState?: GroupRepoState
+  /** "Run group" leaves this repository out (ADR-0024) */
+  skipped: boolean
+  groupRunning: boolean
   actions: RepositoryActions
   onRemove: () => void
   onRename: () => void
@@ -473,14 +545,16 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
         aria-current={selected ? "page" : undefined}
         onClick={() => workspaceStore.select(repo.id)}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-2 pl-3 pr-9 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        title={[repo.alias && repo.alias !== repo.name ? repo.name : "", repo.path, lastRunText].filter(Boolean).join("\n")}
+        title={[repo.alias && repo.alias !== repo.name ? repo.name : "", repo.path, lastRunText, skipped ? t.skip.skipped : "", repo.continuous ? t.continuous.marker : ""].filter(Boolean).join("\n")}
       >
         {latest ? (
           <span className="shrink-0" role="img" aria-label={lastRunText}>{healthIcon[latest.health]}</span>
         ) : (
           <FolderGit2 className="size-4 shrink-0" />
         )}
-        <span className="min-w-0 flex-1 truncate font-medium">{displayName(repo)}</span>
+        <span className={cn("min-w-0 flex-1 truncate font-medium", skipped && "opacity-60")}>{displayName(repo)}</span>
+        {repo.continuous && <InfinityIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label={t.continuous.marker} />}
+        {skipped && <SkipForward className="size-3.5 shrink-0 text-muted-foreground" aria-label={t.skip.skipped} />}
         {groupState?.status === "pending" ? (
           <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-label={t.groupRun.queued} />
         ) : groupState?.status === "failed" ? (
@@ -504,6 +578,12 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
           <DropdownMenuItem onSelect={() => void actions.openInVSCode(repo.id)}><Code2 /> {t.sidebar.openInVSCode}</DropdownMenuItem>
           <DropdownMenuItem onSelect={onRename}><Pencil /> {t.sidebar.renameRepo}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void actions.refresh(repo)}><RefreshCw /> {t.common.refresh}</DropdownMenuItem>
+          <DropdownMenuCheckboxItem checked={skipped} disabled={groupRunning} onCheckedChange={(checked) => void actions.setSkipped(repo.id, checked)}>
+            {t.skip.toggle}
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={repo.continuous} disabled={groupRunning} onCheckedChange={(checked) => void actions.setContinuous(repo.id, checked)}>
+            {t.continuous.toggle}
+          </DropdownMenuCheckboxItem>
           <DropdownMenuItem onSelect={() => void actions.relocate(repo)}><FolderSearch /> {t.relocate.action}</DropdownMenuItem>
           <DropdownMenuItem disabled={index === 0} onSelect={() => void actions.move(repo.id, repo.groupId, index - 1)}><ArrowUp /> {t.sidebar.moveUp}</DropdownMenuItem>
           <DropdownMenuItem disabled={index >= groupSize - 1} onSelect={() => void actions.move(repo.id, repo.groupId, index + 1)}><ArrowDown /> {t.sidebar.moveDown}</DropdownMenuItem>

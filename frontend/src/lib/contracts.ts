@@ -107,15 +107,60 @@ export type Repository = {
   commandSequence: CommandStep[] | null
   /** pinned chips under the sequence line (ADR-0017) */
   quickCommands: QuickCommand[]
+  /** its sequence ends in a process that runs until stopped (dev server) — ADR-0028 */
+  continuous: boolean
   envFiles: string[]
   groupId: string
   lastRefreshedAt: string
+  /** package.json dependency counts */
+  dependencies: number
+  devDependencies: number
+  /** well-known frameworks and tools found among the dependencies */
+  stack: string[] | null
   problem: string
 }
 
 export type GroupRunMode = "sequential" | "parallel"
 
-export type Group = { id: string; name: string; repositoryIds: string[]; collapsed: boolean; runMode: GroupRunMode }
+/** Starts/stops a group at local times on chosen weekdays (ADR-0025). */
+export type GroupSchedule = {
+  /** weekdays, 0 = Sunday … 6 = Saturday */
+  days: number[]
+  startEnabled: boolean
+  /** "HH:MM" */
+  startAt: string
+  stopEnabled: boolean
+  /** "HH:MM" */
+  stopAt: string
+}
+
+export type Group = {
+  id: string
+  name: string
+  repositoryIds: string[]
+  collapsed: boolean
+  runMode: GroupRunMode
+  /** members "Run group" leaves out (ADR-0024) */
+  skippedRepositoryIds: string[] | null
+  schedule: GroupSchedule | null
+}
+
+/** A scheduled stop of a running group, announced with a countdown (ADR-0025). */
+export type ScheduledStop = { groupId: string; groupName: string; stopAt: string; postponed: boolean; running: number }
+export type ScheduleKind = "start" | "stop"
+/** What a group's schedule does next; a zero time (isZeroTime) means none within a week. */
+export type GroupScheduleStatus = {
+  groupId: string
+  nextStart: string
+  /** the user cancelled nextStart */
+  startSkipped: boolean
+  nextStop: string
+  /** the user cancelled nextStop */
+  stopSkipped: boolean
+  stopPostponed: boolean
+}
+/** A schedule acted on its own. */
+export type ScheduleEvent = { groupId: string; groupName: string; action: "started" | "stopped"; error: string }
 
 /** Reusable shell command shared by every repository's sequence. */
 export type GlobalCommand = { id: string; name: string; command: string }
@@ -178,7 +223,9 @@ export type SequenceRun = {
   endedAt: string
 }
 
-export type GroupRepoState = { repositoryId: string; name: string; sequenceId: string; status: StepStatus; error: string }
+/** `excluded`: skipped because the group skips this member (ADR-0024). */
+/** `continuous`: a long-running member, "started" once its last step runs and not counted as something to finish (ADR-0028). */
+export type GroupRepoState = { repositoryId: string; name: string; sequenceId: string; status: StepStatus; error: string; excluded: boolean; continuous: boolean }
 export type GroupRun = {
   id: string
   groupId: string
@@ -223,9 +270,11 @@ export type ImportOptions = {
 export type FolderCheck = {
   path: string
   exists: boolean
-  /** folder contains a readable package.json */
+  /** usable: a readable package.json, or none at all (plain folder) */
   valid: boolean
   name: string
+  /** has a readable package.json */
+  packageJson: boolean
   problem: string
   registeredId: string
   registeredName: string
@@ -265,6 +314,17 @@ export type AppBinding = {
   DecodeJWT(token: string, settings: JwtSettings): Promise<JwtDecoded>
   MoveGroup(id: string, index: number): Promise<void>
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
+  SetRepositorySkipped(repoID: string, skipped: boolean): Promise<void>
+  SetRepositoryContinuous(repoID: string, continuous: boolean): Promise<void>
+  SetGroupSchedule(groupID: string, schedule: GroupSchedule): Promise<Group>
+  ScheduledStops(): Promise<ScheduledStop[]>
+  PostponeScheduledStop(groupID: string, minutes: number): Promise<void>
+  SkipScheduledStop(groupID: string): Promise<void>
+  StopScheduledNow(groupID: string): Promise<void>
+  ScheduleStatuses(): Promise<GroupScheduleStatus[]>
+  SkipNextScheduled(groupID: string, kind: ScheduleKind): Promise<void>
+  ResumeScheduled(groupID: string, kind: ScheduleKind): Promise<void>
+  TakeLaunchFolders(): Promise<FolderCheck[]>
   RunGroup(groupID: string): Promise<GroupRun>
   StopGroup(groupID: string): Promise<void>
   GroupRuns(): Promise<GroupRun[]>
@@ -303,6 +363,11 @@ export type EventMap = {
   "sequence:updated": SequenceRun
   "group:updated": GroupRun
   "app:closing": ClosingProgress
+  "schedule:pending": ScheduledStop[]
+  "schedule:fired": ScheduleEvent
+  "schedule:status": GroupScheduleStatus[]
+  /** folders handed to RepoDock are waiting; fetch them with TakeLaunchFolders */
+  "launch:folder": null
 }
 
 export function isActive(status: RunStatus) {

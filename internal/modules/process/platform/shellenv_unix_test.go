@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"github.com/example/repodock/internal/testsupport"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ func writeScript(t *testing.T, path, body string) {
 }
 
 func TestShellPathIgnoresProfileNoise(t *testing.T) {
+	testsupport.E2E(t)
 	shell := filepath.Join(t.TempDir(), "fakesh")
 	// Called as: fakesh -i -l -c <script>
 	writeScript(t, shell, "#!/bin/sh\necho 'Welcome! Last login: today'\necho 'warning: something' >&2\nPATH=\"/fake/nvm/bin:$PATH\"\neval \"$4\"\necho 'trailing banner'\n")
@@ -32,6 +34,7 @@ func TestShellPathIgnoresProfileNoise(t *testing.T) {
 }
 
 func TestShellPathTimesOut(t *testing.T) {
+	testsupport.E2E(t)
 	shell := filepath.Join(t.TempDir(), "hangsh")
 	writeScript(t, shell, "#!/bin/sh\nsleep 30\n")
 	start := time.Now()
@@ -49,6 +52,7 @@ func TestShellPathTimesOut(t *testing.T) {
 // unique name: a real npm on the machine (CI runners have one) would
 // otherwise be found and make the test meaningless.
 func TestZshrcPathReachesChildProcesses(t *testing.T) {
+	testsupport.E2E(t)
 	zsh, err := exec.LookPath("zsh")
 	if err != nil {
 		t.Skip("zsh is not installed")

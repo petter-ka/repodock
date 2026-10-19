@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/example/repodock/internal/domain"
@@ -136,4 +137,29 @@ func scriptsOf(names ...string) []domain.Script {
 		out = append(out, domain.Script{Name: n, Command: n})
 	}
 	return out
+}
+
+func TestDetectStackHidesImpliedLibraries(t *testing.T) {
+	got := DetectStack(map[string]any{"next": "15", "react": "19", "express": "5"}, map[string]any{"typescript": "5"})
+	if strings.Join(got, ",") != "Next.js,Express,TypeScript" {
+		t.Fatalf("stack = %v", got)
+	}
+	if len(DetectStack(nil, nil)) != 0 {
+		t.Fatal("expected an empty stack")
+	}
+}
+
+func TestInspectCountsDependencies(t *testing.T) {
+	dir := t.TempDir()
+	pkg := `{"name": "x", "dependencies": {"vue": "3", "pinia": "2"}, "devDependencies": {"vite": "6"}}`
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(pkg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := New().Inspect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Dependencies != 2 || meta.DevDependencies != 1 || strings.Join(meta.Stack, ",") != "Vue,Vite" {
+		t.Fatalf("meta = %#v", meta)
+	}
 }

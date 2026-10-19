@@ -90,8 +90,9 @@ jobs:
           wails build "${flags[@]}"
           ls -la build/bin
 
+      # -short skips the end-to-end tests that start real processes.
       - name: Test
-        run: go test ./...
+        run: go test -short ./...
 
       - name: Package
         id: package

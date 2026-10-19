@@ -46,3 +46,8 @@ Use the following template for new architectural decisions:
 | 0021 | Marker environment variables and the leftover-process list | Accepted |
 | 0022 | A sequence holds only its steps; palette-based editor | Accepted |
 | 0023 | Stop processes behind a progress overlay when closing | Accepted |
+| 0024 | Skip repositories when a group runs | Accepted |
+| 0025 | Start and stop groups on a schedule, with a countdown before stops | Accepted |
+| 0026 | Open a folder from the command line; one RepoDock per workspace | Accepted |
+| 0027 | A workspace dashboard as the default "All repositories" view | Accepted |
+| 0028 | Continuous repositories in group runs; parallel by default | Accepted |

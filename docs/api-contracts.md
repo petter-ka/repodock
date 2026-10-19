@@ -11,10 +11,14 @@ Lifecycle hooks are package-level (`app.Hooks`) so they are not bound to the fro
 - `BrowseRepository()` — native folder picker; empty string means cancelled.
 - `AddRepository(path, groupID)` — always creates a new record. The folder may have a readable `package.json` or none (plain folder: no scripts, `packageManager: ""`). A folder that is already registered is allowed; the new record gets a numbered alias `<name> (n)` (ADR-0015).
 - `RefreshRepository(id)`, `RefreshAll()` — re-read metadata. A missing/invalid `package.json` keeps the record and sets `problem` (a plain folder without `package.json` stays healthy).
-- `CheckRepositoryFolder(path)` — never fails; returns `{ path, exists, valid (readable package.json, or none), name, problem, registeredId, registeredName }`. `registeredId` is informational: several records may share a folder. Changes nothing.
+- `CheckRepositoryFolder(path)` — never fails; returns `{ path, exists, valid (readable package.json, or none), name, packageJson (has a readable package.json), problem, registeredId, registeredName }`. `registeredId` is informational: several records may share a folder. Changes nothing.
 - `RelocateRepository(id, path)` — points a repository at another folder; keeps ID, group and sequence; refreshes metadata. Rejected for unusable folders, folders registered to another repository, or while the repository has running processes.
 - `RemoveRepository(id)` — stops the repository's processes and removes the registration. Nothing on disk is touched.
 - `SetGroupRunMode(id, mode)` — `"sequential"` or `"parallel"`; persisted on the group.
+- `SetRepositoryContinuous(repoID, continuous)` — marks a long-running repository (dev server); group runs count it as up once its last step starts (ADR-0028).
+- `SetRepositorySkipped(repoID, skipped)` — "Run group" leaves the repository out (ADR-0024); stored in its current group's `skippedRepositoryIds`.
+- `SetGroupSchedule(groupID, schedule)` → `Group` — validates and saves `{ days, startEnabled, startAt, stopEnabled, stopAt }` (ADR-0025); forgets a postponed/skipped stop of the group.
+- `TakeLaunchFolders()` → `FolderCheck[]` — folders handed to RepoDock on its command line, by a second launch or a macOS "open" event, waiting for the user; returns and forgets them (ADR-0026).
 - `CreateGroup(name)`, `RenameGroup(id, name)`, `DeleteGroup(id)` (members move to the first remaining group; the last group cannot be deleted), `SetGroupCollapsed(id, collapsed)`, `AssignRepository(id, groupID)` (appends), `FindProcessByPID(pid)`, `FindProcessesByPort(port)` → `HostProcess { pid, ppid, name, command, user, startedAt, ports, runId, repositoryId, protected }`; `KillHostProcess(pid, includeChildren)` → `{ pid, signalled, forced, runId }` (SIGTERM, SIGKILL after 3 s; refuses PID ≤ 1, RepoDock and its ancestors; a RepoDock run's PID stops that run — ADR-0018). `JWTSettings()` / `SaveJWTSettings(settings)` → `JWTSettings { algorithm, id, email, expiresInDays, issuer, subject, realm, channel, deviceId, roles, selectedRoles, extraClaims, privateKey, publicKey, secret }` (normalized; stored in `jwt-tool.json`, 0600), `GenerateJWT(settings)` → `{ token, payload, expiresAt }`, `DecodeJWT(token, settings)` → `{ header, payload, algorithm, issuedAt, expiresAt, expired, roles, signature: valid|invalid|unverified, signatureError }` (ADR-0020). `SaveQuickCommands(repoID, commands)` (pinned chips `{ id, label, script, globalCommand, command }`; returns the normalized list — ADR-0017), `RenameRepository(id, alias)` (display name; trimmed, single line, ≤ 200 chars; blank clears), `MoveGroup(id, index)` (sidebar order; index excludes the group; negative appends), `MoveRepository(id, groupID, index)` (inserts at `index` among the target group's other members; negative or out-of-range appends; same group reorders — ADR-0014).
 - `SaveCommandSequence(repoID, steps)` — persists ordered steps; blank labels and missing IDs are filled in. Each step keeps one kind: `script`, else `globalCommand`, else `command`.
 - `SaveGlobalCommands(commands)` — replaces the workspace's global commands (`{ id, name, command }`, ADR-0012) and returns the normalized list. Rejects empty or duplicate names, empty or multi-line commands. Steps referencing a removed command fail when run.
@@ -38,11 +42,21 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 
 ## Group runs
 
-- `RunGroup(groupID)` — runs every member repository's saved sequence using the group's run mode (ADR-0010). Rejected when the group is already running or no member has enabled steps.
+- `RunGroup(groupID)` — runs every member repository's saved sequence using the group's run mode (ADR-0010), leaving out skipped members (ADR-0024). Rejected when the group is already running or no member would run.
 - `StopGroup(groupID)` — cancels the group run and stops all processes of all members (background steps included).
 - `GroupRuns()` — latest run per group.
 
-`GroupRun` = `{ id, groupId, mode, status (running|completed|failed|cancelled), repos[], startedAt, endedAt }`; each `repos[]` entry is `{ repositoryId, name, sequenceId, status (pending|running|completed|failed|skipped|cancelled), error }`.
+`GroupRun` = `{ id, groupId, mode, status (running|completed|failed|cancelled), repos[], startedAt, endedAt }`; each `repos[]` entry is `{ repositoryId, name, sequenceId, status (pending|running|completed|failed|skipped|cancelled), error, excluded }` (`excluded`: skipped because the group skips it; `continuous`: a long-running member, `started` once its last step runs and left out of the progress counter — ADR-0028).
+
+## Schedules
+
+- `ScheduledStops()` → `ScheduledStop[]` — stops announced with a countdown: `{ groupId, groupName, stopAt, postponed, running }`, soonest first (ADR-0025).
+- `PostponeScheduledStop(groupID, minutes)` — moves the announced stop by 1–720 minutes from its current time.
+- `SkipScheduledStop(groupID)` — cancels this occurrence; the next scheduled stop applies.
+- `StopScheduledNow(groupID)` — stops the group immediately; the announced stop counts as done.
+- `ScheduleStatuses()` → `GroupScheduleStatus[]` — `{ groupId, nextStart, startSkipped, nextStop, stopSkipped, stopPostponed }` per scheduled group; a zero time means none within a week.
+- `SkipNextScheduled(groupID, kind)` — cancels the next `"start"` or `"stop"` ahead of time; the schedule continues with the one after.
+- `ResumeScheduled(groupID, kind)` — takes back a cancelled start or stop.
 
 ## Export / import
 
@@ -68,5 +82,10 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 | `process:exited` | `ProcessExit` | Terminal state; always emitted after the run's final output batch |
 | `sequence:updated` | `SequenceRun` | Full sequence snapshot after every state change |
 | `group:updated` | `GroupRun` | Full group-run snapshot after every state change |
+| `schedule:pending` | `ScheduledStop[]` | Announced stops, whenever the list changes (ADR-0025) |
+| `schedule:status` | `GroupScheduleStatus[]` | Next start/stop per scheduled group, whenever it changes |
+| `schedule:fired` | `ScheduleEvent` | `{ groupId, groupName, action: started\|stopped, error }` after a schedule acted |
+| `launch:folder` | `null` | Folders are waiting; fetch them with `TakeLaunchFolders` (ADR-0026) |
+| `app:closing` | `ClosingProgress` | Progress while quitting (ADR-0023) |
 
 `process:output-batch` replaced the starter's per-line `process:output` event to keep IPC volume bounded under chatty processes (risk R-002). Future additions should use business nouns and remain backward compatible with the frontend consumer.

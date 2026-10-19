@@ -32,6 +32,11 @@ type Metadata struct {
 	Name           string
 	PackageManager string
 	Scripts        []domain.Script
+	// Dependencies and DevDependencies count the package.json entries.
+	Dependencies    int
+	DevDependencies int
+	// Stack lists well-known frameworks and tools among the dependencies.
+	Stack []string
 }
 
 type Service struct{}
@@ -67,7 +72,7 @@ func (s *Service) Inspect(path string) (Metadata, error) {
 	if err != nil {
 		return Metadata{}, err
 	}
-	meta := Metadata{Path: abs, Name: filepath.Base(abs), Scripts: []domain.Script{}}
+	meta := Metadata{Path: abs, Name: filepath.Base(abs), Scripts: []domain.Script{}, Stack: []string{}}
 
 	file, err := os.Open(filepath.Join(abs, "package.json"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -93,14 +98,19 @@ func (s *Service) Inspect(path string) (Metadata, error) {
 		meta.Name = name
 	}
 	meta.Scripts = pkg.Scripts
+	meta.Dependencies = len(pkg.Dependencies)
+	meta.DevDependencies = len(pkg.DevDependencies)
+	meta.Stack = DetectStack(pkg.Dependencies, pkg.DevDependencies)
 	meta.PackageManager = DetectPackageManager(abs, pkg.PackageManager)
 	return meta, nil
 }
 
 type packageJSON struct {
-	Name           string
-	PackageManager string
-	Scripts        []domain.Script
+	Name            string
+	PackageManager  string
+	Scripts         []domain.Script
+	Dependencies    map[string]any
+	DevDependencies map[string]any
 }
 
 // parsePackageJSON decodes the fields RepoDock needs while preserving the
@@ -111,10 +121,15 @@ func parsePackageJSON(data []byte) (packageJSON, error) {
 		Name           any             `json:"name"`
 		PackageManager any             `json:"packageManager"`
 		Scripts        json.RawMessage `json:"scripts"`
+		// Malformed dependency maps are ignored rather than failing discovery.
+		Dependencies    any `json:"dependencies"`
+		DevDependencies any `json:"devDependencies"`
 	}
 	if err := json.Unmarshal(data, &shape); err != nil {
 		return out, fmt.Errorf("invalid package.json: %w", err)
 	}
+	out.Dependencies, _ = shape.Dependencies.(map[string]any)
+	out.DevDependencies, _ = shape.DevDependencies.(map[string]any)
 	out.Name, _ = shape.Name.(string)
 	out.PackageManager, _ = shape.PackageManager.(string)
 	out.Scripts = []domain.Script{}
@@ -157,6 +172,54 @@ func parsePackageJSON(data []byte) (packageJSON, error) {
 		out.Scripts = append(out.Scripts, domain.Script{Name: key, Command: command})
 	}
 	return out, nil
+}
+
+// stackMarkers maps a dependency name to the framework or tool it reveals,
+// in display order.
+var stackMarkers = []struct{ pkg, label string }{
+	{"next", "Next.js"},
+	{"nuxt", "Nuxt"},
+	{"@remix-run/react", "Remix"},
+	{"@sveltejs/kit", "SvelteKit"},
+	{"astro", "Astro"},
+	{"@angular/core", "Angular"},
+	{"react-native", "React Native"},
+	{"react", "React"},
+	{"vue", "Vue"},
+	{"svelte", "Svelte"},
+	{"solid-js", "Solid"},
+	{"@nestjs/core", "NestJS"},
+	{"express", "Express"},
+	{"fastify", "Fastify"},
+	{"hono", "Hono"},
+	{"electron", "Electron"},
+	{"vite", "Vite"},
+	{"typescript", "TypeScript"},
+}
+
+// DetectStack names the well-known frameworks and tools found among the
+// dependencies. A meta-framework hides the library it is built on (Next.js
+// implies React), so the list stays short.
+func DetectStack(deps, devDeps map[string]any) []string {
+	has := func(name string) bool {
+		_, a := deps[name]
+		_, b := devDeps[name]
+		return a || b
+	}
+	implied := map[string]string{"Next.js": "React", "Remix": "React", "React Native": "React", "Nuxt": "Vue", "SvelteKit": "Svelte"}
+	hidden := map[string]bool{}
+	for _, m := range stackMarkers {
+		if has(m.pkg) && implied[m.label] != "" {
+			hidden[implied[m.label]] = true
+		}
+	}
+	stack := []string{}
+	for _, m := range stackMarkers {
+		if has(m.pkg) && !hidden[m.label] {
+			stack = append(stack, m.label)
+		}
+	}
+	return stack
 }
 
 // DetectPackageManager uses the packageManager field, then lockfile hints,

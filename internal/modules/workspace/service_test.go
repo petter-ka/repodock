@@ -272,26 +272,29 @@ func TestGroupRunMode(t *testing.T) {
 	s := newTemp(t)
 	_, _ = s.Load()
 	g := s.Snapshot().Groups[0]
-	if g.RunMode != domain.GroupRunSequential {
+	if g.RunMode != domain.GroupRunParallel {
 		t.Fatalf("default run mode = %q", g.RunMode)
+	}
+	if created, _ := s.CreateGroup("New"); created.RunMode != domain.GroupRunParallel {
+		t.Fatalf("new group run mode = %q", created.RunMode)
 	}
 	if err := s.SetGroupRunMode(g.ID, "sideways"); err == nil {
 		t.Fatal("unknown mode must be rejected")
 	}
-	if err := s.SetGroupRunMode(g.ID, domain.GroupRunParallel); err != nil {
+	if err := s.SetGroupRunMode(g.ID, domain.GroupRunSequential); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.Group(g.ID); got.RunMode != domain.GroupRunParallel {
+	if got, _ := s.Group(g.ID); got.RunMode != domain.GroupRunSequential {
 		t.Fatalf("run mode = %q", got.RunMode)
 	}
 
-	// Files written before run modes existed load as sequential.
+	// Files written before run modes existed load with the default.
 	_ = os.MkdirAll(filepath.Dir(s.Path()), 0o700)
 	_ = os.WriteFile(s.Path(), []byte(`{"version":1,"groups":[{"id":"g","name":"A"}]}`), 0o600)
 	if _, err := s.Load(); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.Group("g"); got.RunMode != domain.GroupRunSequential {
+	if got, _ := s.Group("g"); got.RunMode != domain.GroupRunParallel {
 		t.Fatalf("legacy run mode = %q", got.RunMode)
 	}
 }
@@ -362,5 +365,100 @@ func TestOnlyEnabledStepsAreStored(t *testing.T) {
 	repo, _ = s.Repository("r1")
 	if len(repo.CommandSequence) != 1 || repo.CommandSequence[0].Script != "b" {
 		t.Fatalf("disabled steps must not be saved: %#v", repo.CommandSequence)
+	}
+}
+
+func TestSkippedMembersFollowTheGroup(t *testing.T) {
+	s := newTemp(t)
+	if _, err := s.Load(); err != nil {
+		t.Fatal(err)
+	}
+	first := s.Snapshot().Groups[0].ID
+	other, _ := s.CreateGroup("Other")
+	s.UpsertRepository(domain.Repository{ID: "a", Path: "/a", GroupID: first})
+	s.UpsertRepository(domain.Repository{ID: "b", Path: "/b", GroupID: first})
+	if err := s.SetRepositorySkipped("a", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRepositorySkipped("a", true); err != nil {
+		t.Fatal(err)
+	}
+	if g, _ := s.Group(first); !slices.Equal(g.SkippedRepositoryIDs, []string{"a"}) {
+		t.Fatalf("skipped = %v", g.SkippedRepositoryIDs)
+	}
+	// Moving the repository away drops its skip; the new group runs it.
+	if err := s.AssignRepository("a", other.ID); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := s.Group(first)
+	o, _ := s.Group(other.ID)
+	if len(g.SkippedRepositoryIDs) != 0 || len(o.SkippedRepositoryIDs) != 0 {
+		t.Fatalf("skips after move = %v / %v", g.SkippedRepositoryIDs, o.SkippedRepositoryIDs)
+	}
+	if err := s.SetRepositorySkipped("missing", true); err == nil {
+		t.Fatal("expected an error for an unknown repository")
+	}
+}
+
+func TestSetRepositoryContinuous(t *testing.T) {
+	s := newTemp(t)
+	_, _ = s.Load()
+	s.UpsertRepository(domain.Repository{ID: "a", Path: "/a"})
+	if err := s.SetRepositoryContinuous("a", true); err != nil {
+		t.Fatal(err)
+	}
+	if repo, _ := s.Repository("a"); !repo.Continuous {
+		t.Fatal("not marked continuous")
+	}
+	if err := s.SetRepositoryContinuous("missing", true); err == nil {
+		t.Fatal("expected an error for an unknown repository")
+	}
+}
+
+func TestCleanSchedule(t *testing.T) {
+	clean, err := CleanSchedule(domain.GroupSchedule{Days: []int{5, 1, 1}, StartEnabled: true, StartAt: " 9:05 ", StopAt: ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(clean.Days, []int{1, 5}) || clean.StartAt != "09:05" {
+		t.Fatalf("clean = %#v", clean)
+	}
+	bad := []domain.GroupSchedule{
+		{Days: []int{7}},
+		{Days: []int{1}, StopEnabled: true},
+		{Days: []int{1}, StopEnabled: true, StopAt: "24:00"},
+		{Days: []int{1}, StartAt: "9am"},
+		{StartEnabled: true, StartAt: "09:00"},
+		{Days: []int{1}, StartEnabled: true, StartAt: "18:00", StopEnabled: true, StopAt: "18:00"},
+	}
+	for _, schedule := range bad {
+		if _, err := CleanSchedule(schedule); err == nil {
+			t.Errorf("expected %#v to be rejected", schedule)
+		}
+	}
+	// A switched-off schedule needs no days.
+	if _, err := CleanSchedule(domain.GroupSchedule{StopAt: "18:00"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetGroupSchedulePersists(t *testing.T) {
+	s := newTemp(t)
+	if _, err := s.Load(); err != nil {
+		t.Fatal(err)
+	}
+	id := s.Snapshot().Groups[0].ID
+	if _, err := s.SetGroupSchedule(id, domain.GroupSchedule{Days: []int{1, 2, 3, 4, 5}, StopEnabled: true, StopAt: "18:30"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewAt(s.Path())
+	if _, err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if g, _ := reloaded.Group(id); !g.Schedule.StopEnabled || g.Schedule.StopAt != "18:30" || len(g.Schedule.Days) != 5 {
+		t.Fatalf("schedule = %#v", g.Schedule)
 	}
 }

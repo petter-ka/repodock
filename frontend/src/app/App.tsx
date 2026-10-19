@@ -8,6 +8,8 @@ import { readPreference, writePreference } from "@/lib/preferences"
 import { ThemeProvider } from "@/lib/theme"
 import { ClosingOverlay } from "@/modules/app-closing"
 import { LeftoverProcessesDialog } from "@/modules/leftover-processes"
+import { LaunchFolderDialog, repositoryManagerModule } from "@/modules/repository-manager"
+import { ScheduledStopCountdown } from "@/modules/scheduled-stop"
 import { miniApps, useMiniApps } from "@/state/miniApps"
 import { NotificationsProvider, useNotifications } from "@/state/notifications"
 import { miniAppList } from "./miniApps"
@@ -43,6 +45,8 @@ function Shell() {
       <View />
       <MiniAppHost />
       <LeftoverProcessesDialog />
+      <LaunchFolderDialog onShow={() => select(repositoryManagerModule.id)} />
+      <ScheduledStopCountdown />
       <Toaster />
       <ClosingOverlay />
     </div>

@@ -11,9 +11,9 @@ Groups often represent one product made of several repositories (API, web, worke
 
 - "Run group" executes each member repository's **saved command sequence** (ADR-0009), in sidebar order. No separate group-level step list exists; the repository sequence remains the single source of "how to start this repo".
 - Each group persists a `runMode`:
-  - `sequential` (default): one repository at a time. The next repository starts when the previous repository's sequence **completes** — foreground steps exited 0 and background steps were started. The group stops at the first failure; remaining repositories are marked `cancelled`.
-  - `parallel`: every repository's sequence starts at once; each finishes independently and a failure does not stop the others.
-- Repositories without enabled steps are `skipped`. A group with no runnable repository is rejected with an explanatory error.
+  - `sequential`: one repository at a time. The next repository starts when the previous repository's sequence **completes** — foreground steps exited 0 and background steps were started. The group stops at the first failure; remaining repositories are marked `cancelled`.
+  - `parallel` (default since ADR-0028; originally sequential was): every repository's sequence starts at once; each finishes independently and a failure does not stop the others.
+- Repositories without enabled steps are `skipped`, as are members the group skips (ADR-0024). A group with no runnable repository is rejected with an explanatory error.
 - One running group run per group. A repository's own sequence already running makes that member `failed` with the reason.
 - Group runs live in the `sequence` module (`StartGroup`, `CancelGroup`, `GroupRuns`), built on the existing sequence runner; the app facade resolves the group's members.
 - `StopGroup` cancels the group run **and** stops every process of every member, because background steps intentionally outlive the run.

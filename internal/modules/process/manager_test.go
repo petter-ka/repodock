@@ -9,6 +9,7 @@ import (
 
 	"github.com/example/repodock/internal/domain"
 	"github.com/example/repodock/internal/modules/process/platform"
+	"github.com/example/repodock/internal/testsupport"
 	gops "github.com/shirou/gopsutil/v4/process"
 )
 
@@ -68,6 +69,7 @@ func pick(windows, unix string) string {
 }
 
 func TestRunCapturesStdoutAndStderr(t *testing.T) {
+	testsupport.E2E(t)
 	m, rec := newTestManager(t)
 	run, err := m.Start(spec(t, pick("echo out& echo err 1>&2", "echo out; echo err 1>&2")))
 	if err != nil {
@@ -103,6 +105,7 @@ func TestRunCapturesStdoutAndStderr(t *testing.T) {
 }
 
 func TestRunNonZeroExit(t *testing.T) {
+	testsupport.E2E(t)
 	m, _ := newTestManager(t)
 	run, err := m.Start(spec(t, "exit 3"))
 	if err != nil {
@@ -141,6 +144,7 @@ func TestMultilineCommandIsRejected(t *testing.T) {
 }
 
 func TestMissingWorkdirFailsWithExplanation(t *testing.T) {
+	testsupport.E2E(t)
 	m, rec := newTestManager(t)
 	run, err := m.Start(Spec{RepositoryID: "repo", Workdir: t.TempDir() + "/missing", Command: "echo hi"})
 	if err != nil {
@@ -156,6 +160,7 @@ func TestMissingWorkdirFailsWithExplanation(t *testing.T) {
 }
 
 func TestStopTerminatesProcessTree(t *testing.T) {
+	testsupport.E2E(t)
 	m, rec := newTestManager(t)
 	run, err := m.Start(spec(t, pick("ping -n 60 127.0.0.1 > nul", "sleep 60; echo unreachable")))
 	if err != nil {
@@ -216,6 +221,7 @@ func TestStopTerminatesProcessTree(t *testing.T) {
 }
 
 func TestRestartReusesSpec(t *testing.T) {
+	testsupport.E2E(t)
 	m, _ := newTestManager(t)
 	first, err := m.Start(spec(t, pick("ping -n 60 127.0.0.1 > nul", "sleep 60")))
 	if err != nil {
@@ -240,6 +246,7 @@ func TestRestartReusesSpec(t *testing.T) {
 }
 
 func TestRetentionDropsOldFinishedRuns(t *testing.T) {
+	testsupport.E2E(t)
 	m, _ := newTestManager(t)
 	m.opts.RetainFinished = 3
 	for range 6 {
@@ -259,6 +266,7 @@ func TestRetentionDropsOldFinishedRuns(t *testing.T) {
 }
 
 func TestArgvIsQuotedForTheShell(t *testing.T) {
+	testsupport.E2E(t)
 	m, rec := newTestManager(t)
 	argv := []string{pick("echo", "printf"), pick("hello", "%s\\n"), pick("world", "a b;c")}
 	run, err := m.Start(Spec{RepositoryID: "repo", Workdir: t.TempDir(), Argv: argv})

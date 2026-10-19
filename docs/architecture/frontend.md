@@ -11,7 +11,8 @@ src/
 │   └── ui/                     # shadcn-style primitives over Radix
 ├── lib/                        # bridge, contracts, mock backend, i18n, theme, ansi, keyboard
 ├── modules/
-│   ├── repository-manager/     # sidebar, console, processes, sequences, env files
+│   ├── repository-manager/     # sidebar, dashboard, console, processes, sequences, env files, schedules, launch-folder dialog
+│   ├── scheduled-stop/         # countdown before a scheduled stop (shell-level)
 │   └── settings/
 ├── state/                      # cross-module state (notifications)
 └── styles/                     # global tokens

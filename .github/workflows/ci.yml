@@ -27,12 +27,14 @@ jobs:
         shell: bash
         run: mkdir -p frontend/dist && touch frontend/dist/index.html
       - run: go vet ./...
+      # -short skips the end-to-end tests that start real processes
+      # (testsupport.E2E); run them locally with a plain `go test ./...`.
       - name: Test (race detector)
         if: runner.os == 'Linux'
-        run: go test -race ./...
+        run: go test -short -race ./...
       - name: Test
         if: runner.os != 'Linux'
-        run: go test ./...
+        run: go test -short ./...
 
   frontend:
     runs-on: ubuntu-latest

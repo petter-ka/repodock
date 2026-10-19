@@ -4,6 +4,7 @@ package guard
 
 import (
 	"context"
+	"github.com/example/repodock/internal/testsupport"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +71,7 @@ func TestTagReplacesInheritedMarkers(t *testing.T) {
 }
 
 func TestStopOwnKillsProcessesThatLeftTheGroup(t *testing.T) {
+	testsupport.E2E(t)
 	g := New(filepath.Join(t.TempDir(), "running.json"))
 	_, mine := startEscaped(t, g.Tag(os.Environ(), "run-1", "repo-1"))
 	_, other := startEscaped(t, New(filepath.Join(t.TempDir(), "other.json")).Tag(os.Environ(), "run-2", "repo-1"))
@@ -84,6 +86,7 @@ func TestStopOwnKillsProcessesThatLeftTheGroup(t *testing.T) {
 }
 
 func TestWatchdogKillsMarkedProcessesWhenRepoDockDies(t *testing.T) {
+	testsupport.E2E(t)
 	g := New(filepath.Join(t.TempDir(), "running.json"))
 	if err := g.StartWatchdog(); err != nil {
 		t.Fatal(err)
@@ -98,6 +101,7 @@ func TestWatchdogKillsMarkedProcessesWhenRepoDockDies(t *testing.T) {
 }
 
 func TestLeftoversListsOnlyProcessesOfDeadSessions(t *testing.T) {
+	testsupport.E2E(t)
 	g := New(filepath.Join(t.TempDir(), "running.json"))
 	pid, orphan := startEscaped(t, deadSession("old-run"))
 	// Another instance that is still running (same owner as this test).

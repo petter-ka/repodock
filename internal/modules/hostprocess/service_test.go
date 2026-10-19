@@ -3,6 +3,7 @@ package hostprocess
 import (
 	"context"
 	"errors"
+	"github.com/example/repodock/internal/testsupport"
 	"net"
 	"os"
 	"os/exec"
@@ -34,6 +35,7 @@ func startSleeper(t *testing.T, ignoreTerm bool) *exec.Cmd {
 }
 
 func TestDescribeAndKill(t *testing.T) {
+	testsupport.E2E(t)
 	s := New(time.Second)
 	ctx := context.Background()
 	cmd := startSleeper(t, false)
@@ -50,6 +52,7 @@ func TestDescribeAndKill(t *testing.T) {
 }
 
 func TestKillForcesAfterGrace(t *testing.T) {
+	testsupport.E2E(t)
 	s := New(300 * time.Millisecond)
 	cmd := startSleeper(t, true)
 	time.Sleep(100 * time.Millisecond) // let the trap install
@@ -73,6 +76,7 @@ func TestProtectedProcesses(t *testing.T) {
 }
 
 func TestDescribeMissingPID(t *testing.T) {
+	testsupport.E2E(t)
 	cmd := startSleeper(t, false)
 	pid := cmd.Process.Pid
 	_ = cmd.Process.Kill()
@@ -83,6 +87,7 @@ func TestDescribeMissingPID(t *testing.T) {
 }
 
 func TestByPortFindsListener(t *testing.T) {
+	testsupport.E2E(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

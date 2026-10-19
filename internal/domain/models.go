@@ -2,7 +2,11 @@
 // frontend bridge. It must not depend on Wails or any module.
 package domain
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // WorkspaceVersion is the current persisted workspace schema version.
 const WorkspaceVersion = 1
@@ -14,15 +18,97 @@ type Group struct {
 	Collapsed     bool     `json:"collapsed"`
 	// RunMode controls how "Run group" executes member sequences.
 	RunMode GroupRunMode `json:"runMode"`
+	// SkippedRepositoryIDs are members that "Run group" leaves out; they can
+	// still be run on their own (ADR-0024).
+	SkippedRepositoryIDs []string `json:"skippedRepositoryIds"`
+	// Schedule starts and stops the group at set times (ADR-0025).
+	Schedule GroupSchedule `json:"schedule"`
+}
+
+// GroupSchedule runs a group at fixed local times on chosen weekdays. A
+// scheduled stop is announced with a countdown before it happens.
+type GroupSchedule struct {
+	// Days are the weekdays the schedule applies on: 0 = Sunday … 6 =
+	// Saturday, sorted and unique.
+	Days []int `json:"days"`
+	// StartEnabled runs the group at StartAt ("HH:MM", local time).
+	StartEnabled bool   `json:"startEnabled"`
+	StartAt      string `json:"startAt"`
+	// StopEnabled stops the group at StopAt ("HH:MM", local time).
+	StopEnabled bool   `json:"stopEnabled"`
+	StopAt      string `json:"stopAt"`
+}
+
+// Active reports whether the schedule starts or stops anything.
+func (s GroupSchedule) Active() bool { return (s.StartEnabled || s.StopEnabled) && len(s.Days) > 0 }
+
+// ParseClock parses a 24-hour "HH:MM" (or "H:MM") time of day.
+func ParseClock(value string) (hour, minute int, ok bool) {
+	h, m, found := strings.Cut(value, ":")
+	if !found || len(h) < 1 || len(h) > 2 || len(m) != 2 || !digits(h) || !digits(m) {
+		return 0, 0, false
+	}
+	hour, _ = strconv.Atoi(h)
+	minute, _ = strconv.Atoi(m)
+	if hour > 23 || minute > 59 {
+		return 0, 0, false
+	}
+	return hour, minute, true
+}
+
+func digits(value string) bool {
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ScheduledStop is a scheduled stop of a running group that is close
+// enough to be announced with a countdown (ADR-0025).
+type ScheduledStop struct {
+	GroupID   string    `json:"groupId"`
+	GroupName string    `json:"groupName"`
+	StopAt    time.Time `json:"stopAt"`
+	// Postponed is true when the user moved the stop from its scheduled time.
+	Postponed bool `json:"postponed"`
+	// Running counts the group's live processes.
+	Running int `json:"running"`
+}
+
+// GroupScheduleStatus is what a group's schedule does next (ADR-0025). A
+// zero time means nothing within the next week.
+type GroupScheduleStatus struct {
+	GroupID   string    `json:"groupId"`
+	NextStart time.Time `json:"nextStart"`
+	// StartSkipped means the user cancelled NextStart; it will not run.
+	StartSkipped bool      `json:"startSkipped"`
+	NextStop     time.Time `json:"nextStop"`
+	// StopSkipped means the user cancelled NextStop; nothing is stopped then.
+	StopSkipped bool `json:"stopSkipped"`
+	// StopPostponed means NextStop was moved from its scheduled time.
+	StopPostponed bool `json:"stopPostponed"`
+}
+
+// ScheduleEvent reports a schedule acting on its own.
+type ScheduleEvent struct {
+	GroupID   string `json:"groupId"`
+	GroupName string `json:"groupName"`
+	// Action is "started" or "stopped".
+	Action string `json:"action"`
+	// Error is set when the action failed.
+	Error string `json:"error"`
 }
 
 type GroupRunMode string
 
 const (
 	// GroupRunSequential runs one repository's sequence at a time, in group
-	// order, and stops at the first failure. It is the default.
+	// order, and stops at the first failure.
 	GroupRunSequential GroupRunMode = "sequential"
-	// GroupRunParallel starts every repository's sequence at once.
+	// GroupRunParallel starts every repository's sequence at once. It is
+	// the default for new groups (ADR-0028).
 	GroupRunParallel GroupRunMode = "parallel"
 )
 
@@ -48,10 +134,19 @@ type Repository struct {
 	CommandSequence []CommandStep `json:"commandSequence"`
 	// QuickCommands are pinned scripts/commands shown as chips under the
 	// sequence line; each click starts one in the background (ADR-0017).
-	QuickCommands   []QuickCommand `json:"quickCommands"`
-	EnvFiles        []string       `json:"envFiles"`
-	GroupID         string         `json:"groupId"`
-	LastRefreshedAt string         `json:"lastRefreshedAt"`
+	QuickCommands []QuickCommand `json:"quickCommands"`
+	// Continuous marks a repository whose sequence ends in a process that
+	// runs until stopped (a dev server). Group runs treat it as up once that
+	// step has started (ADR-0028).
+	Continuous      bool     `json:"continuous"`
+	EnvFiles        []string `json:"envFiles"`
+	GroupID         string   `json:"groupId"`
+	LastRefreshedAt string   `json:"lastRefreshedAt"`
+	// Dependencies and DevDependencies count package.json entries; Stack
+	// lists well-known frameworks and tools found among them (dashboard).
+	Dependencies    int      `json:"dependencies"`
+	DevDependencies int      `json:"devDependencies"`
+	Stack           []string `json:"stack"`
 	// Problem describes why the last refresh could not read package.json.
 	// Empty when the repository metadata is healthy.
 	Problem string `json:"problem"`
@@ -305,13 +400,18 @@ type SequenceRun struct {
 
 // GroupRepoState is one repository's progress inside a group run. Status
 // reuses step statuses: pending, running, completed, failed, skipped
-// (no enabled steps), cancelled.
+// (no enabled steps, or excluded by the user), cancelled.
 type GroupRepoState struct {
 	RepositoryID string     `json:"repositoryId"`
 	Name         string     `json:"name"`
 	SequenceID   string     `json:"sequenceId"`
 	Status       StepStatus `json:"status"`
 	Error        string     `json:"error"`
+	// Excluded marks a member skipped because the group skips it (ADR-0024).
+	Excluded bool `json:"excluded"`
+	// Continuous marks a long-running member: it is "started" once its last
+	// step runs and is not counted as something to finish (ADR-0028).
+	Continuous bool `json:"continuous"`
 }
 
 // GroupRun executes the command sequences of every repository in a group.
@@ -404,6 +504,9 @@ type FolderCheck struct {
 	// package.json, or none at all (a plain folder).
 	Valid bool   `json:"valid"`
 	Name  string `json:"name"`
+	// PackageJSON is true when the folder has a readable package.json; a
+	// valid folder without one is a plain folder.
+	PackageJSON bool `json:"packageJson"`
 	// Problem explains why the folder is not valid.
 	Problem string `json:"problem"`
 	// RegisteredID is set when another repository already uses this path.
