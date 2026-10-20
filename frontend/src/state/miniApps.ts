@@ -5,15 +5,23 @@ import { useSyncExternalStore } from "react"
 import { readJSON, writeJSON } from "@/lib/preferences"
 
 export type WindowPosition = { x: number; y: number }
+export type WindowSize = { width: number; height: number }
 type State = {
   /** open app IDs, bottom-most first (the last one is on top) */
   open: string[]
   positions: Record<string, WindowPosition>
+  /** sizes of resized windows */
+  sizes: Record<string, WindowSize>
+  /** maximized window IDs */
+  maximized: string[]
 }
 
 const KEY = "miniApps"
-let state: State = readJSON<State>(KEY, { open: [], positions: {} })
-if (!Array.isArray(state.open) || typeof state.positions !== "object" || !state.positions) state = { open: [], positions: {} }
+const empty = (): State => ({ open: [], positions: {}, sizes: {}, maximized: [] })
+let state: State = { ...empty(), ...readJSON<Partial<State>>(KEY, {}) }
+if (!Array.isArray(state.open) || typeof state.positions !== "object" || !state.positions) state = empty()
+if (typeof state.sizes !== "object" || !state.sizes) state.sizes = {}
+if (!Array.isArray(state.maximized)) state.maximized = []
 const listeners = new Set<() => void>()
 
 function set(next: State, persist = true) {
@@ -29,9 +37,11 @@ export const miniApps = {
     return () => { listeners.delete(listener) }
   },
   isOpen: (id: string) => state.open.includes(id),
-  toggle(id: string) {
-    if (state.open.includes(id)) miniApps.close(id)
-    else set({ ...state, open: [...state.open, id] })
+  /** Opens or closes a window; `maximized` opens it maximized (a later restore still works). */
+  toggle(id: string, options: { maximized?: boolean } = {}) {
+    if (state.open.includes(id)) return miniApps.close(id)
+    const maximized = options.maximized && !state.maximized.includes(id) ? [...state.maximized, id] : state.maximized
+    set({ ...state, open: [...state.open, id], maximized })
   },
   close(id: string) {
     set({ ...state, open: state.open.filter((open) => open !== id) })
@@ -44,6 +54,15 @@ export const miniApps = {
   /** Moves a window; `persist` is false while dragging and true on drop. */
   move(id: string, position: WindowPosition, persist = true) {
     set({ ...state, positions: { ...state.positions, [id]: position } }, persist)
+  },
+  /** Resizes a window; `persist` is false while dragging and true on drop. */
+  resize(id: string, size: WindowSize, persist = true) {
+    set({ ...state, sizes: { ...state.sizes, [id]: size } }, persist)
+  },
+  isMaximized: (id: string) => state.maximized.includes(id),
+  toggleMaximized(id: string) {
+    const maximized = state.maximized.includes(id) ? state.maximized.filter((m) => m !== id) : [...state.maximized, id]
+    set({ ...state, maximized })
   },
 }
 

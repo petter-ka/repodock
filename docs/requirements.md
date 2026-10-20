@@ -53,6 +53,8 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-29 | Accept a folder on the command line and ask which group it goes to | P1 |
 | FR-30 | Show a grouped workspace dashboard as the default "All repositories" view | P1 |
 | FR-31 | Mark repositories as continuous (dev servers) so group runs do not wait for them; parallel group runs by default | P1 |
+| FR-32 | GraphQL map mini app: draw the merged `.graphql` schema files of chosen repositories/folders (all or checked files only) as an explorable graph with searchable docs and a tree view of a type's fields (down) or its users (up); stays smooth on enterprise-size schemas | P2 |
+| FR-33 | Choose the interface text size and spacing (S/M/L/XL each, default M) in Settings | P2 |
 
 ## Non-functional requirements
 

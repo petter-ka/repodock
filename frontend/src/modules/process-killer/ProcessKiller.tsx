@@ -115,7 +115,7 @@ export function ProcessKiller() {
 
       {results && (
         <div className="grid gap-2" aria-live="polite">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-between text-[0.6875rem] text-muted-foreground">
             <span>{last?.mode === "port" ? f(t.killer.onPort, { port: last.value, count: results.length }) : t.killer.result}</span>
             {last && (
               <button onClick={() => void search(last)} className="flex items-center gap-1 rounded px-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
@@ -139,21 +139,21 @@ export function ProcessKiller() {
                 </span>
               </div>
               {process.command && (
-                <p title={process.command} className="mt-1 line-clamp-2 break-all font-mono text-[11px] text-muted-foreground">{process.command}</p>
+                <p title={process.command} className="mt-1 line-clamp-2 break-all font-mono text-[0.6875rem] text-muted-foreground">{process.command}</p>
               )}
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-[0.6875rem] text-muted-foreground">
                 {[process.user && f(t.killer.user, { user: process.user }), process.ppid > 0 && f(t.killer.parent, { pid: process.ppid }), process.startedAt && f(t.killer.started, { time: formatTime(process.startedAt) })].filter(Boolean).join(" · ")}
               </p>
 
               {process.protected ? (
-                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-warning"><ShieldOff className="size-3.5" /> {process.protected}</p>
+                <p className="mt-2 flex items-center gap-1.5 text-[0.6875rem] text-warning"><ShieldOff className="size-3.5" /> {process.protected}</p>
               ) : confirming === process.pid ? (
                 <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-2">
                   <p className="text-xs font-medium">{f(t.killer.confirm, { pid: process.pid, name: process.name })}</p>
                   {process.runId ? (
-                    <p className="mt-1 text-[11px] text-muted-foreground">{t.killer.runHint}</p>
+                    <p className="mt-1 text-[0.6875rem] text-muted-foreground">{t.killer.runHint}</p>
                   ) : (
-                    <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-[11px]">
+                    <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-[0.6875rem]">
                       <input type="checkbox" checked={children} onChange={(event) => setChildren(event.target.checked)} className="size-3.5 accent-[var(--primary)]" />
                       {t.killer.children}
                     </label>
@@ -177,7 +177,7 @@ export function ProcessKiller() {
         </div>
       )}
 
-      {!results && !error && <p className="text-[11px] text-muted-foreground">{t.killer.hint}</p>}
+      {!results && !error && <p className="text-[0.6875rem] text-muted-foreground">{t.killer.hint}</p>}
     </div>
   )
 }

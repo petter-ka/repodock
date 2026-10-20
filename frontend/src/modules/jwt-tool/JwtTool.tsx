@@ -93,7 +93,7 @@ export function JwtTool() {
             </button>
           ))}
         </div>
-        <span className="ml-auto text-[11px] text-muted-foreground">{error ? <span className="text-destructive">{error}</span> : t.jwt.saved}</span>
+        <span className="ml-auto text-[0.6875rem] text-muted-foreground">{error ? <span className="text-destructive">{error}</span> : t.jwt.saved}</span>
       </div>
       {tab === "encode"
         ? <Encoder settings={settings} update={update} onDecode={(token) => { filledFrom.current = token; setDecodeText(token); setTab("decode") }} />
@@ -105,7 +105,7 @@ export function JwtTool() {
 function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <label className={cn("grid gap-1", wide && "col-span-2")}>
-      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      <span className="text-[0.6875rem] font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   )
@@ -114,7 +114,7 @@ function Field({ label, children, wide }: { label: string; children: React.React
 function Section({ title, summary, defaultOpen, children }: { title: string; summary?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode }) {
   return (
     <details open={defaultOpen} className="group/section border-t border-border">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-3.5 transition group-open/section:rotate-90" />
         {title}
         {summary && <span className="ml-auto font-normal normal-case tracking-normal">{summary}</span>}
@@ -174,7 +174,7 @@ function Encoder({ settings, update, onDecode }: { settings: JwtSettings; update
   const text = (key: "id" | "email" | "issuer" | "subject" | "realm" | "channel" | "deviceId", mono = true) => (
     <Input value={settings[key]} onChange={(event) => update({ [key]: event.target.value })} spellCheck={false} autoComplete="off" className={cn("h-8 text-xs", mono && "font-mono")} />
   )
-  const keyClass = cn("thin-scrollbar h-20 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring", !showKeys && "[-webkit-text-security:disc]")
+  const keyClass = cn("thin-scrollbar h-20 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-[0.6875rem] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring", !showKeys && "[-webkit-text-security:disc]")
 
   return (
     <div
@@ -231,7 +231,7 @@ function Encoder({ settings, update, onDecode }: { settings: JwtSettings; update
         summary={<span className={keyReady ? "text-success" : "text-warning"}>{rs ? t.jwt.privateKey : t.jwt.secret}: {keyReady ? t.jwt.keySet : t.jwt.keyMissing}</span>}
       >
         <div className="grid gap-2">
-          <p className="text-[11px] text-muted-foreground">{t.jwt.keysHint}</p>
+          <p className="text-[0.6875rem] text-muted-foreground">{t.jwt.keysHint}</p>
           {rs ? (
             <>
               <Field label={t.jwt.privateKey}>
@@ -259,9 +259,9 @@ function Encoder({ settings, update, onDecode }: { settings: JwtSettings; update
           spellCheck={false}
           aria-invalid={!extraValid}
           placeholder={'{\n  "tenant": "t1"\n}'}
-          className={cn("thin-scrollbar h-20 w-full resize-y rounded-lg border bg-background px-3 py-2 font-mono text-[11px] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring", extraValid ? "border-border" : "border-destructive")}
+          className={cn("thin-scrollbar h-20 w-full resize-y rounded-lg border bg-background px-3 py-2 font-mono text-[0.6875rem] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring", extraValid ? "border-border" : "border-destructive")}
         />
-        <p className={cn("mt-1 text-[11px]", extraValid ? "text-muted-foreground" : "text-destructive")}>{extraValid ? t.jwt.extraHint : t.jwt.extraInvalid}</p>
+        <p className={cn("mt-1 text-[0.6875rem]", extraValid ? "text-muted-foreground" : "text-destructive")}>{extraValid ? t.jwt.extraHint : t.jwt.extraInvalid}</p>
       </Section>
 
       <div className="sticky bottom-0 z-10 grid gap-2 border-t border-border bg-card p-3">
@@ -271,14 +271,14 @@ function Encoder({ settings, update, onDecode }: { settings: JwtSettings; update
         {failure && <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {failure}</p>}
         {result && (
           <div className="grid gap-2 rounded-lg border border-success/40 bg-success/5 p-2.5">
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-2 text-[0.6875rem] text-muted-foreground">
               <Clock className="size-3.5" /> {f(t.jwt.expiresAt, { time: formatDateTime(result.expiresAt) })}
               <span className="ml-auto flex gap-1">
                 <Button size="xs" variant="outline" onClick={() => onDecode(result.token)}><ArrowRightLeft /> {t.jwt.openInDecoder}</Button>
                 <Button size="xs" onClick={copy}>{copied ? <Check /> : <Copy />} {t.jwt.copy}</Button>
               </span>
             </div>
-            <p className="thin-scrollbar max-h-24 select-all overflow-auto break-all font-mono text-[11px] leading-4">{result.token}</p>
+            <p className="thin-scrollbar max-h-24 select-all overflow-auto break-all font-mono text-[0.6875rem] leading-4">{result.token}</p>
           </div>
         )}
       </div>
@@ -340,10 +340,10 @@ function Decoder({ settings, update, text, onText, filledFrom, onEdit }: {
         placeholder={t.jwt.pasteToken}
         spellCheck={false}
         aria-label={t.jwt.token}
-        className="thin-scrollbar h-24 w-full resize-y break-all rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="thin-scrollbar h-24 w-full resize-y break-all rounded-lg border border-border bg-background px-3 py-2 font-mono text-[0.6875rem] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       {failure && <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {failure}</p>}
-      {!decoded && !failure && <p className="text-[11px] text-muted-foreground">{t.jwt.decodeHint}</p>}
+      {!decoded && !failure && <p className="text-[0.6875rem] text-muted-foreground">{t.jwt.decodeHint}</p>}
 
       {decoded && badge && (
         <>
@@ -357,10 +357,10 @@ function Decoder({ settings, update, text, onText, filledFrom, onEdit }: {
                 <Clock className="size-3" /> {f(decoded.expired ? t.jwt.expired : t.jwt.validUntil, { time: formatDateTime(decoded.expiresAt) })}
               </Badge>
             )}
-            {decoded.issuedAt && <span className="text-[11px] text-muted-foreground">{f(t.jwt.issued, { time: formatDateTime(decoded.issuedAt) })}</span>}
+            {decoded.issuedAt && <span className="text-[0.6875rem] text-muted-foreground">{f(t.jwt.issued, { time: formatDateTime(decoded.issuedAt) })}</span>}
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-[0.6875rem] text-muted-foreground">
             <PencilLine className="size-3.5 shrink-0 text-primary" />
             <span className="flex-1">{t.jwt.filledFromToken}</span>
             <Button size="xs" variant="outline" onClick={onEdit}>{t.jwt.editInEncoder}</Button>
@@ -368,7 +368,7 @@ function Decoder({ settings, update, text, onText, filledFrom, onEdit }: {
 
           {decoded.roles.length > 0 && (
             <div className="grid gap-1.5">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.jwt.tokenRoles}</span>
+              <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.jwt.tokenRoles}</span>
               <div className="flex flex-wrap gap-1">
                 {decoded.roles.map((role) => <Badge key={role} variant="info" className="font-mono">{role}</Badge>)}
               </div>
@@ -386,8 +386,8 @@ function Decoder({ settings, update, text, onText, filledFrom, onEdit }: {
 function JsonBlock({ title, json }: { title: string; json: string }) {
   return (
     <div className="grid gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</span>
-      <pre className="console-scrollbar max-h-64 overflow-auto rounded-lg bg-console p-3 font-mono text-[11px] leading-4 text-console-foreground">{json}</pre>
+      <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</span>
+      <pre className="console-scrollbar max-h-64 overflow-auto rounded-lg bg-console p-3 font-mono text-[0.6875rem] leading-4 text-console-foreground">{json}</pre>
     </div>
   )
 }

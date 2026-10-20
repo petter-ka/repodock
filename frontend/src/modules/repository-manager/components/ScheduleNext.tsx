@@ -116,14 +116,14 @@ export function ScheduleMenuItems({ group, statuses, actions, onEdit, editLabel 
               <DropdownMenuItem onSelect={() => void actions.skipScheduled(group, event.kind, when)}>
                 {event.kind === "start" ? <Play /> : <Square />}
                 <span className="flex-1">{event.kind === "start" ? t.schedule.skipStart : t.schedule.skipStop}</span>
-                <span className="pl-3 text-[11px] tabular-nums text-muted-foreground">{shown}</span>
+                <span className="pl-3 text-[0.6875rem] tabular-nums text-muted-foreground">{shown}</span>
               </DropdownMenuItem>
             )}
             {event.anySkipped && (
               <DropdownMenuItem onSelect={() => void actions.resumeScheduled(group, event.kind, when)}>
                 <RotateCcw />
                 <span className="flex-1">{event.kind === "start" ? t.schedule.restoreStart : t.schedule.restoreStop}</span>
-                <span className="pl-3 text-[11px] tabular-nums text-muted-foreground line-through">{shown}</span>
+                <span className="pl-3 text-[0.6875rem] tabular-nums text-muted-foreground line-through">{shown}</span>
               </DropdownMenuItem>
             )}
           </Fragment>

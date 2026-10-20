@@ -580,6 +580,12 @@ export function createMockBackend(): Backend {
     // The browser mock has no earlier sessions.
     async LeftoverProcesses() { return [] },
     async StopLeftoverProcesses() { return 0 },
+    // GraphQL map: every folder holds the same sample schema.
+    async ScanGraphQLFiles(folder) {
+      const { mockGraphQLFiles } = await import("./mockGraphQL")
+      return { root: folder, files: mockGraphQLFiles(), truncated: false, skipped: 0 }
+    },
+    async BrowseGraphQLFolder() { return window.prompt("Mock folder path", "C:/work/graphql-api") ?? "" },
     // JWT tool: tokens are not really signed in the browser mock.
     async JWTSettings() {
       return structuredClone(jwtSettings)

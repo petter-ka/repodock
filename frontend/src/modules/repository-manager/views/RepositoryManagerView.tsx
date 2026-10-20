@@ -234,7 +234,7 @@ function OverviewPane({ actions }: { actions: ReturnType<typeof useRepositoryAct
               {item.icon}
               {item.label}
               {!!item.badge && (
-                <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", tab === item.id ? "bg-primary-foreground/20" : "bg-success/15 text-success")}>{item.badge}</span>
+                <span className={cn("rounded-full px-1.5 text-[0.6875rem] tabular-nums", tab === item.id ? "bg-primary-foreground/20" : "bg-success/15 text-success")}>{item.badge}</span>
               )}
             </button>
           ))}

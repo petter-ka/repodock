@@ -33,7 +33,7 @@ export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; 
         className={cn("-ml-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring", expanded && "mb-2")}
       >
         {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em]">{t.scripts.title}</h2>
+        <h2 className="text-[0.6875rem] font-semibold uppercase tracking-[0.12em]">{t.scripts.title}</h2>
         <Badge className="tabular-nums">{repo.scripts.length}</Badge>
         {!expanded && runningCount > 0 && (
           <Badge variant="success" className="gap-1 tabular-nums"><Loader2 className="size-3 animate-spin" />{f(t.scripts.runningCount, { count: runningCount })}</Badge>
@@ -66,7 +66,7 @@ export function ScriptChips({ repo, runningLabels, onRun }: { repo: Repository; 
                     <Play className="size-3 shrink-0 text-muted-foreground group-hover/chip:text-primary" />
                   )}
                   <span className="shrink-0 whitespace-nowrap font-semibold">{script.name}</span>
-                  <span className="truncate font-mono text-[11px] text-muted-foreground">{script.command}</span>
+                  <span className="truncate font-mono text-[0.6875rem] text-muted-foreground">{script.command}</span>
                 </button>
               </Tooltip>
             )

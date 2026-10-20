@@ -34,6 +34,12 @@ export type MiniApp = {
   label: (t: Messages) => string
   /** window content; `close` closes the window */
   View: React.ComponentType<{ close: () => void }>
-  /** window width in px */
+  /** window width in px (the default width when resizable) */
   width: number
+  /** default window height in px; content-sized when omitted */
+  height?: number
+  /** the window can be resized from its corner and maximized; its size is remembered */
+  resizable?: boolean
+  /** opening it from the rail starts it maximized (it can still be restored); needs `resizable` */
+  openMaximized?: boolean
 }

@@ -118,7 +118,7 @@ export function ScheduledStopCountdown() {
           <span className="flex size-6 items-center justify-center rounded-full bg-warning/15 text-warning"><AlarmClock className="size-3.5" /></span>
           <span className="font-medium">{f(t.countdown.pill, { name: pending[0].groupName, time: "" }).trim()}</span>
           <span className="font-mono tabular-nums">{formatCountdown(remaining(pending[0]))}</span>
-          {pending.length > 1 && <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">+{pending.length - 1}</span>}
+          {pending.length > 1 && <span className="rounded-full bg-muted px-1.5 text-[0.6875rem] tabular-nums text-muted-foreground">+{pending.length - 1}</span>}
         </button>
       )}
 
@@ -136,7 +136,7 @@ export function ScheduledStopCountdown() {
                   <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> {t.countdown.stopping}</span>
                 ) : (
                   <>
-                    <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t.countdown.stopsIn}</span>
+                    <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">{t.countdown.stopsIn}</span>
                     <span className="font-mono text-4xl font-semibold tabular-nums tracking-tight" role="timer" aria-live="off">{formatCountdown(remaining(primary))}</span>
                   </>
                 )}
@@ -185,13 +185,13 @@ export function ScheduledStopCountdown() {
                   {busy === "all:stop" ? <Loader2 className="animate-spin" /> : <Square />} {t.countdown.stopNow}
                 </Button>
               </div>
-              <p className="text-center text-[11px] text-muted-foreground">{t.countdown.cancelHint}</p>
+              <p className="text-center text-[0.6875rem] text-muted-foreground">{t.countdown.cancelHint}</p>
               <Button variant="ghost" className="text-muted-foreground" onClick={hide}>{t.countdown.hide}</Button>
             </div>
 
             {others.length > 0 && (
               <div className="border-t border-border pt-3">
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.countdown.more}</p>
+                <p className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.countdown.more}</p>
                 <ul className="grid gap-1">
                   {others.map((stop) => (
                     <li key={keyOf(stop)} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-sm">

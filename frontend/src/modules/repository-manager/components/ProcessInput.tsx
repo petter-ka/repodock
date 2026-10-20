@@ -108,7 +108,7 @@ export function ProcessInput({ runs, selectedRunId, repoNames, actions }: {
           ))}
         </select>
       ) : (
-        <span className="max-w-56 shrink-0 truncate rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground" title={target.command}>{label(target)}</span>
+        <span className="max-w-56 shrink-0 truncate rounded-md bg-muted px-2 py-1 font-mono text-[0.6875rem] text-muted-foreground" title={target.command}>{label(target)}</span>
       )}
 
       <div className="relative min-w-48 flex-1">
@@ -126,7 +126,7 @@ export function ProcessInput({ runs, selectedRunId, repoNames, actions }: {
             if (event.key === "Escape") setValue("")
             else if (event.key === "d" && event.ctrlKey && !value) { event.preventDefault(); void eof() }
           }}
-          className="h-8 w-full rounded-md border border-border bg-background px-3 pr-9 font-mono text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 w-full rounded-md border border-border bg-background px-3 pr-9 font-mono text-[0.8125rem] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
         />
         <Tooltip label={secret ? t.input.show : t.input.hide}>
           <button

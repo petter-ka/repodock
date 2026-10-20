@@ -58,14 +58,14 @@ export const CommandInput = forwardRef<HTMLInputElement, { repo: Repository; onR
               else if (event.key === "ArrowDown") { event.preventDefault(); browse(-1) }
               else if (event.key === "Escape") { setValue(""); setCursor(-1) }
             }}
-            className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 font-mono text-[13px] outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 font-mono text-[0.8125rem] outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
         <Button type="submit" variant="outline" disabled={!value.trim()}>
           <CornerDownLeft /> {t.common.run}
         </Button>
       </div>
-      <p className="mt-1.5 text-[11px] text-muted-foreground">{t.scripts.runHint}</p>
+      <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">{t.scripts.runHint}</p>
     </form>
   )
 })

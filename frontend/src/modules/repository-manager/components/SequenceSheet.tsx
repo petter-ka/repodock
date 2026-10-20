@@ -180,7 +180,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
           {icon}
           <span className="grid min-w-0 flex-1">
             <span className="truncate font-mono text-xs font-medium">{name}</span>
-            {detail && <span className="truncate font-mono text-[10px] text-muted-foreground">{detail}</span>}
+            {detail && <span className="truncate font-mono text-[0.625rem] text-muted-foreground">{detail}</span>}
           </span>
           {used > 0 && <Badge variant="info" className="shrink-0 tabular-nums">{f(t.sequence.used, { count: used })}</Badge>}
         </button>
@@ -207,7 +207,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
           <aside aria-label={t.sequence.available} className="thin-scrollbar max-h-64 shrink-0 overflow-y-auto border-b border-border p-4 sm:max-h-none sm:w-72 sm:border-b-0 sm:border-r">
             <p className="mb-3 text-xs text-muted-foreground">{t.sequence.paletteHint}</p>
 
-            <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t.sequence.scripts}</h3>
+            <h3 className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">{t.sequence.scripts}</h3>
             {repo.scripts.length === 0
               ? <p className="mb-4 text-xs text-muted-foreground">{t.sequence.noScripts}</p>
               : (
@@ -220,7 +220,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
               )}
 
             <div className="mb-1.5 flex items-center justify-between">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t.sequence.globals}</h3>
+              <h3 className="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">{t.sequence.globals}</h3>
               <Tooltip label={t.sequence.manageGlobal}>
                 <Button size="icon-sm" variant="ghost" aria-label={t.sequence.manageGlobal} onClick={() => setManageGlobals(true)}><Settings2 /></Button>
               </Tooltip>
@@ -236,7 +236,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
                 </ul>
               )}
 
-            <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t.sequence.other}</h3>
+            <h3 className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">{t.sequence.other}</h3>
             <ul className="space-y-1">
               {paletteItem({ kind: "command" }, "command", <Terminal className="size-3.5 shrink-0 text-muted-foreground" />, t.sequence.customCommand, t.sequence.customCommandHint)}
               {paletteItem({ kind: "empty" }, "empty", <CircleSlash className="size-3.5 shrink-0 text-muted-foreground" />, t.sequence.emptyStep, t.sequence.emptyStepHint)}
@@ -316,7 +316,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
                     ) : (
                       <span className="grid min-w-0 flex-1">
                         <span className="truncate font-mono text-sm font-medium">{kind === "script" ? step.script : global?.name ?? t.transfer.missingGlobal}</span>
-                        <span className="truncate font-mono text-[11px] text-muted-foreground" title={kind === "script" ? script?.command : global?.command}>
+                        <span className="truncate font-mono text-[0.6875rem] text-muted-foreground" title={kind === "script" ? script?.command : global?.command}>
                           {kind === "script" ? script?.command : global?.command}
                         </span>
                       </span>
@@ -351,7 +351,7 @@ export function SequenceSheet({ repo, open, sequence, actions, onOpenChange }: {
                     </Tooltip>
                   </div>
                   {(missing || globalMissing || noop || state?.error) && (
-                    <div className="mt-1.5 flex items-center gap-1.5 pl-[4.25rem] text-[11px]">
+                    <div className="mt-1.5 flex items-center gap-1.5 pl-[4.25rem] text-[0.6875rem]">
                       {missing ? <><AlertTriangle className="size-3 text-warning" /> <span className="text-muted-foreground">{t.sequence.scriptMissing}</span></>
                         : globalMissing ? <><AlertTriangle className="size-3 text-warning" /> <span className="text-muted-foreground">{t.sequence.globalMissing}</span></>
                           : noop ? <><CircleSlash className="size-3 text-warning" /> <span className="text-warning">{t.sequence.noCommand}</span></> : null}

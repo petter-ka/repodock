@@ -10,9 +10,11 @@ import { cn } from "@/lib/utils"
 import type { ConsoleLine, Run } from "../domain"
 import { useProcessVersion } from "../hooks/useStores"
 import { processStore, type LineView } from "../store/processStore"
+import { appearance, useAppearance } from "@/state/appearance"
 import { useConsoleLimit } from "@/state/consoleLimit"
 
-const LINE_HEIGHT = 20
+/** Line height at text size M; it scales with the Text size setting. */
+const BASE_LINE_HEIGHT = 20
 const OVERSCAN = 20
 const PADDING = 8
 
@@ -48,6 +50,8 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
   const [query, setQuery] = useState("")
   const [follow, setFollow] = useState(true)
   const limit = useConsoleLimit()
+  useAppearance()
+  const lineHeight = Math.round(BASE_LINE_HEIGHT * appearance.textScale())
   const scrollRef = useRef<HTMLDivElement>(null)
   // Ring-buffer evictions seen so far, to keep the view anchored while
   // scrolled up (the oldest lines disappear from above).
@@ -75,12 +79,14 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => LINE_HEIGHT,
+    estimateSize: () => lineHeight,
     overscan: OVERSCAN,
     paddingStart: PADDING,
     paddingEnd: PADDING,
     getItemKey: (index) => lines.at(index)?.seq ?? index,
   })
+  // A new text size changes every row's height.
+  useEffect(() => { virtualizer.measure() }, [lineHeight, virtualizer])
 
   // Stick to the bottom while following; otherwise compensate for lines
   // evicted from the top so the visible text does not move.
@@ -92,7 +98,7 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
     if (!node) return
     if (follow) node.scrollTop = node.scrollHeight
     else if (evicted !== undefined && previous !== undefined && evicted > previous) {
-      node.scrollTop = Math.max(0, node.scrollTop - (evicted - previous) * LINE_HEIGHT)
+      node.scrollTop = Math.max(0, node.scrollTop - (evicted - previous) * lineHeight)
     }
   }, [lines, stamp, follow])
 
@@ -105,7 +111,7 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
   const onScroll = () => {
     const node = scrollRef.current
     if (!node) return
-    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < LINE_HEIGHT * 1.5
+    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < lineHeight * 1.5
     if (atBottom !== follow) setFollow(atBottom)
   }
 
@@ -153,7 +159,7 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
           />
         </div>
         <Tooltip label={t.console.limitHint}>
-          <span className="w-28 text-right text-[11px] tabular-nums text-muted-foreground">{f(t.console.linesOf, { count: lines.length.toLocaleString(), limit: limit.toLocaleString() })}</span>
+          <span className="w-28 text-right text-[0.6875rem] tabular-nums text-muted-foreground">{f(t.console.linesOf, { count: lines.length.toLocaleString(), limit: limit.toLocaleString() })}</span>
         </Tooltip>
         <Tooltip label={t.console.copy}>
           <Button size="icon-sm" variant="ghost" aria-label={t.console.copy} disabled={!lines.length} onClick={copy}><Copy /></Button>
@@ -172,7 +178,7 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
           role="log"
           aria-live="off"
           tabIndex={0}
-          className="console-scrollbar absolute inset-0 overflow-auto font-mono text-[12px] text-console-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="console-scrollbar absolute inset-0 overflow-auto font-mono text-[0.75rem] text-console-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           {lines.length === 0 ? (
             <div className="flex h-full items-center justify-center text-console-muted">
@@ -195,6 +201,7 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
                       line={line}
                       repoName={repoNames?.get(line.repositoryId)}
                       runLabel={showRunColumn ? runLabels.get(line.runId) : undefined}
+                      height={lineHeight}
                     />
                   )
                 })}
@@ -212,13 +219,13 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
   )
 }
 
-const LineRow = memo(function LineRow({ line, repoName, runLabel }: { line: ConsoleLine; repoName?: string; runLabel?: string }) {
+const LineRow = memo(function LineRow({ line, repoName, runLabel, height }: { line: ConsoleLine; repoName?: string; runLabel?: string; height: number }) {
   const segments = segmentsOf(line)
   const stderr = line.stream === "stderr"
   const stdin = line.stream === "stdin"
   return (
-    <div className={cn("flex w-max min-w-full gap-3 whitespace-pre px-6 hover:bg-white/[0.03]", stderr && "bg-red-500/[0.06]", stdin && "bg-emerald-500/[0.07]")} style={{ height: LINE_HEIGHT, lineHeight: `${LINE_HEIGHT}px` }}>
-      <span className="w-16 shrink-0 select-none text-console-muted">{line.timestamp ? timeFormat.format(new Date(line.timestamp)) : ""}</span>
+    <div className={cn("flex w-max min-w-full gap-3 whitespace-pre px-6 hover:bg-white/[0.03]", stderr && "bg-red-500/[0.06]", stdin && "bg-emerald-500/[0.07]")} style={{ height, lineHeight: `${height}px` }}>
+      <span className="w-[8.5ch] shrink-0 select-none text-console-muted">{line.timestamp ? timeFormat.format(new Date(line.timestamp)) : ""}</span>
       {repoName !== undefined && <span className="w-28 shrink-0 select-none truncate text-sky-300/80">{repoName}</span>}
       {runLabel !== undefined && <span className="w-20 shrink-0 select-none truncate text-violet-300/80">{runLabel}</span>}
       <span className={cn("w-1 shrink-0 select-none", stderr ? "bg-red-400/70" : stdin ? "bg-emerald-400/70" : line.partial ? "bg-amber-400/70" : "bg-transparent")} aria-hidden />

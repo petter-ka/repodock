@@ -99,7 +99,7 @@ export function ScheduleDialog({ groupIds, actions, onOpenChange }: {
 
           <fieldset className="grid gap-2">
             <div className="flex items-center gap-2">
-              <legend className="flex-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.schedule.applyTo}</legend>
+              <legend className="flex-1 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.schedule.applyTo}</legend>
               <Button type="button" size="xs" variant="ghost" onClick={() => setTicked(workspace.groups.map((g) => g.id))}>{t.schedule.selectAll}</Button>
               <Button type="button" size="xs" variant="ghost" onClick={() => setTicked([])}>{t.schedule.selectNone}</Button>
             </div>
@@ -124,13 +124,13 @@ export function ScheduleDialog({ groupIds, actions, onOpenChange }: {
                       </span>
                       <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: seriesColor(index) }} />
                       <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
-                      <span className={cn("shrink-0 truncate text-[11px]", isScheduleActive(own) ? "text-muted-foreground" : "text-muted-foreground/60")}>{describeSchedule(own, t, locale)}</span>
+                      <span className={cn("shrink-0 truncate text-[0.6875rem]", isScheduleActive(own) ? "text-muted-foreground" : "text-muted-foreground/60")}>{describeSchedule(own, t, locale)}</span>
                     </button>
                   </li>
                 )
               })}
             </ul>
-            <p className="text-[11px] text-muted-foreground">{t.schedule.groupsHint}</p>
+            <p className="text-[0.6875rem] text-muted-foreground">{t.schedule.groupsHint}</p>
             {replaced.length > 0 && (
               <p className="flex items-start gap-1.5 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {f(t.schedule.replaces, { names: replaced.map((g) => g.name).join(", ") })}
@@ -139,7 +139,7 @@ export function ScheduleDialog({ groupIds, actions, onOpenChange }: {
           </fieldset>
 
           <fieldset className="grid gap-2.5">
-            <legend className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.schedule.days}</legend>
+            <legend className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.schedule.days}</legend>
             <div role="radiogroup" aria-label={t.schedule.days} className="inline-flex w-fit rounded-xl border border-border bg-background p-1">
               {presets.map((option) => (
                 <button
@@ -211,7 +211,7 @@ export function ScheduleDialog({ groupIds, actions, onOpenChange }: {
           <dl className="grid grid-cols-2 gap-2 text-sm">
             {([["start", t.schedule.nextStart, next.start], ["stop", t.schedule.nextStop, next.stop]] as const).map(([key, label, at]) => (
               <div key={key} className="rounded-lg bg-muted/50 px-3 py-2">
-                <dt className="text-[11px] text-muted-foreground">{label}</dt>
+                <dt className="text-[0.6875rem] text-muted-foreground">{label}</dt>
                 <dd className="font-medium tabular-nums">
                   {at && !error ? (
                     <>
@@ -314,7 +314,7 @@ function DayTimeline({ schedule, now }: { schedule: GroupSchedule; now: Date }) 
         {stop !== null && <span className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-destructive ring-2 ring-muted" style={{ left: pct(stop) }} />}
         <span className="absolute inset-y-0 w-px bg-foreground/60" style={{ left: pct(nowMinutes) }} title={t.dashboard.now} />
       </div>
-      <div className="mt-1 flex justify-between text-[10px] tabular-nums text-muted-foreground">
+      <div className="mt-1 flex justify-between text-[0.625rem] tabular-nums text-muted-foreground">
         {["00", "06", "12", "18", "24"].map((h) => <span key={h}>{h}</span>)}
       </div>
     </div>

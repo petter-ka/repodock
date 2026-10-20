@@ -87,5 +87,6 @@ Potential modules:
 - Database tools.
 - Local service health dashboard.
 - Build/test history.
+- GraphQL schema map — shipped as a mini app (ADR-0029).
 
 Every module should follow `module boundary → service → domain contract → UI feature` and avoid direct access to another module's internals.

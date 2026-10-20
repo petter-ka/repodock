@@ -104,7 +104,7 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                     {globals.map((g) => (
                       <li key={g.id} className={cn("flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm", g.status === "existing" ? "opacity-60" : "bg-card")}>
                         <span className="font-medium">{g.name}</span>
-                        <span className={cn("min-w-0 flex-1 truncate font-mono text-[11px]", g.status === "existing" ? "text-muted-foreground" : "text-warning")} title={g.command}>{g.command}</span>
+                        <span className={cn("min-w-0 flex-1 truncate font-mono text-[0.6875rem]", g.status === "existing" ? "text-muted-foreground" : "text-warning")} title={g.command}>{g.command}</span>
                         <Badge variant={globalVariant[g.status]}>{f(t.transfer.globalStatus[g.status], { name: g.importName })}</Badge>
                       </li>
                     ))}
@@ -127,8 +127,8 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                           <div className="flex items-center gap-2 text-sm">
                             {repo.status === "missing" && !fixed ? <FolderX className="size-4 shrink-0 text-warning" /> : <FolderGit2 className="size-4 shrink-0 text-muted-foreground" />}
                             <span className="font-medium">{repo.name}</span>
-                            <span className={cn("min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground", fixed && "line-through opacity-60")} title={repo.path}>{repo.path}</span>
-                            {repo.steps && repo.steps.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{f(t.transfer.steps, { count: repo.steps.length })}</span>}
+                            <span className={cn("min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground", fixed && "line-through opacity-60")} title={repo.path}>{repo.path}</span>
+                            {repo.steps && repo.steps.length > 0 && <span className="shrink-0 text-[0.6875rem] text-muted-foreground">{f(t.transfer.steps, { count: repo.steps.length })}</span>}
                             <Badge variant={fixed ? "success" : statusVariant[repo.status]}>{t.transfer.status[fixed ? "new" : repo.status]}</Badge>
                           </div>
                           {repo.status === "missing" && (
@@ -144,7 +144,7 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                           {active && (repo.steps ?? []).length > 0 && (
                             <ul className="mt-1 space-y-0.5 pl-6">
                               {(repo.steps ?? []).map((step, si) => (
-                                <li key={si} className={cn("flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground", !importSequences && "line-through opacity-50")}>
+                                <li key={si} className={cn("flex items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground", !importSequences && "line-through opacity-50")}>
                                   <span className="w-4 shrink-0 text-right tabular-nums">{si + 1}.</span>
                                   {step.script ? <FileCode2 className="size-3 shrink-0" /> : step.globalCommand ? <Globe className="size-3 shrink-0" /> : <Terminal className={cn("size-3 shrink-0", step.command && "text-warning")} />}
                                   <span className="truncate">{step.script
@@ -152,13 +152,13 @@ export function ImportDialog({ preview, actions, onClose }: { preview: ImportPre
                                     : step.globalCommand
                                       ? `${step.label || globalById.get(step.globalCommand)?.name || ""} → ${globalById.get(step.globalCommand)?.command ?? t.transfer.missingGlobal}`
                                       : step.command || t.sequence.noop}</span>
-                                  {step.background && <span className="shrink-0 font-sans text-[9px] uppercase tracking-wide">bg</span>}
+                                  {step.background && <span className="shrink-0 font-sans text-[0.5625rem] uppercase tracking-wide">bg</span>}
                                 </li>
                               ))}
                             </ul>
                           )}
                           {active && (repo.quickCommands ?? []).length > 0 && (
-                            <div className="mt-1 flex flex-wrap items-center gap-1 pl-6 text-[11px]">
+                            <div className="mt-1 flex flex-wrap items-center gap-1 pl-6 text-[0.6875rem]">
                               <span className="flex items-center gap-1 text-muted-foreground"><Zap className="size-3" /> {t.quick.title}:</span>
                               {(repo.quickCommands ?? []).map((q, qi) => {
                                 const global = q.globalCommand ? globalById.get(q.globalCommand) : undefined
@@ -253,13 +253,13 @@ function PathOverrideField({ value, check, checking, onChange, onCommit, onBrows
             }
           }}
           className={cn(
-            "h-7 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[11px] outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            "h-7 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[0.6875rem] outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
             invalid ? "border-destructive" : "border-border",
           )}
         />
         <Button size="xs" variant="outline" onClick={onBrowse}><FolderOpen /> {t.relocate.browse}</Button>
       </div>
-      <div className="mt-1 text-[11px]">{status}</div>
+      <div className="mt-1 text-[0.6875rem]">{status}</div>
     </div>
   )
 }

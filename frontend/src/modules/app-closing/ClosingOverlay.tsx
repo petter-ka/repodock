@@ -70,7 +70,7 @@ export function ClosingOverlay() {
             <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-muted">
               <div className={cn("h-full rounded-full transition-all duration-300", progress.forcing ? "bg-warning" : "bg-primary")} style={{ width: `${percent}%` }} />
             </div>
-            <p className="mt-1.5 text-right text-[11px] tabular-nums text-muted-foreground">{f(t.closing.progress, { done: stopped, total })}</p>
+            <p className="mt-1.5 text-right text-[0.6875rem] tabular-nums text-muted-foreground">{f(t.closing.progress, { done: stopped, total })}</p>
             <ul className="thin-scrollbar mt-3 max-h-56 space-y-1 overflow-y-auto">
               {rows.map((row) => (
                 <li key={row.runId} className={cn("flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition", row.stopped ? "text-muted-foreground" : "bg-muted/50")}>
@@ -81,7 +81,7 @@ export function ClosingOverlay() {
                     {row.repositoryName && <span className="font-medium">{row.repositoryName} · </span>}
                     <span className="font-mono text-xs">{row.label}</span>
                   </span>
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">PID {row.pid}</span>
+                  <span className="shrink-0 font-mono text-[0.6875rem] tabular-nums text-muted-foreground">PID {row.pid}</span>
                 </li>
               ))}
             </ul>

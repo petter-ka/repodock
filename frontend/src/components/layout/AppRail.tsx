@@ -1,8 +1,8 @@
-import { Command } from "lucide-react"
 import { Tooltip } from "@/components/ui/tooltip"
 import type { AppModule, MiniApp } from "@/lib/module"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import logo from "@/assets/logo.svg"
 
 /**
  * Narrow application rail listing registered feature modules, then the mini
@@ -38,9 +38,7 @@ export function AppRail({ modules, active, onChange, miniApps = [], openMiniApps
   }
   return (
     <nav aria-label={t.app.name} className="flex w-16 shrink-0 flex-col items-center border-r border-border bg-rail py-4">
-      <div className="mb-6 flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm" aria-hidden>
-        <Command className="size-5" />
-      </div>
+      <img src={logo} alt="" aria-hidden draggable={false} className="mb-6 size-10 select-none drop-shadow-sm" />
       <div className="flex flex-1 flex-col gap-2">
         {modules.filter((m) => !m.footer).map(item)}
         {miniApps.length > 0 && (

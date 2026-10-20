@@ -11,16 +11,24 @@ src/
 │   └── ui/                     # shadcn-style primitives over Radix
 ├── lib/                        # bridge, contracts, mock backend, i18n, theme, ansi, keyboard
 ├── modules/
+│   ├── graphql-map/            # mini app: schema files → merged model → React Flow graph + docs panel (ADR-0029)
+│   ├── jwt-tool/ process-killer/  # mini apps (ADR-0018, ADR-0020)
 │   ├── repository-manager/     # sidebar, dashboard, console, processes, sequences, env files, schedules, launch-folder dialog
 │   ├── scheduled-stop/         # countdown before a scheduled stop (shell-level)
 │   └── settings/
-├── state/                      # cross-module state (notifications)
+├── state/                      # cross-module state (notifications, mini app windows, console limit, appearance)
 └── styles/                     # global tokens
 ```
 
 ## Module registry
 
 Each feature module exports an `AppModule` (`lib/module.ts`): id, rail icon, label, `View`, and an optional `init` that wires backend events once for the app lifetime. The shell (`app/App.tsx`) only renders the rail and the active module's view; it knows nothing about repositories. Adding a module means adding one entry to `app/modules.ts`.
+
+Mini apps (`MiniApp`, registered in `app/miniApps.ts`) open in non-modal `FloatingWindow`s (ADR-0018). A mini app may declare a default `height` and `resizable: true`; its size and maximized state are kept in `state/miniApps.ts` next to its position (ADR-0029). Heavy mini apps lazy-load their view.
+
+## Text size and spacing
+
+Settings → Size offers Text size and Spacing, S/M/L/XL each (ADR-0030). Text size is the root font size, so text must use rem (`text-xs`, `text-[0.6875rem]`), never px. Spacing scales Tailwind's `--spacing` unit. Components that need pixel metrics tied to the text (the console's virtualized line height) read `state/appearance.ts`.
 
 ## Bridge
 

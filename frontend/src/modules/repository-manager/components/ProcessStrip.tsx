@@ -44,7 +44,7 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
   return (
     <section aria-label={t.process.title} className="border-t border-border bg-card/40 px-6 py-3">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.process.title}</h2>
+        <h2 className="text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.process.title}</h2>
         {onClearFinished && finished > 0 && (
           <Button size="xs" variant="ghost" onClick={onClearFinished} className="text-muted-foreground"><Eraser /> {t.process.clearFinished}</Button>
         )}
@@ -85,10 +85,10 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-sm font-medium">{run.label}</span>
-                    {waiting && <Badge variant="warning" className="px-1.5 text-[10px]"><Keyboard className="size-2.5" />{t.input.waiting}</Badge>}
-                    {run.sequenceId && <Badge variant="outline" className="px-1.5 text-[10px]"><Layers className="size-2.5" />{t.process.fromSequence}</Badge>}
+                    {waiting && <Badge variant="warning" className="px-1.5 text-[0.625rem]"><Keyboard className="size-2.5" />{t.input.waiting}</Badge>}
+                    {run.sequenceId && <Badge variant="outline" className="px-1.5 text-[0.625rem]"><Layers className="size-2.5" />{t.process.fromSequence}</Badge>}
                   </div>
-                  <div className="truncate font-mono text-[11px] text-muted-foreground" title={run.command}>
+                  <div className="truncate font-mono text-[0.6875rem] text-muted-foreground" title={run.command}>
                     {repoNames ? <span className="font-sans font-medium text-foreground/70">{repoNames.get(run.repositoryId)} · </span> : null}
                     {run.command || t.sequence.noop}
                   </div>
@@ -119,7 +119,7 @@ export function ProcessStrip({ runs, snapshots, repoNames, selectedRunId, onSele
                   )}
                 </div>
               </div>
-              <div className="pointer-events-none relative mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground tabular-nums">
+              <div className="pointer-events-none relative mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-muted-foreground tabular-nums">
                 <Badge variant={runStatusVariant[run.status]}>{t.process.status[run.status]}</Badge>
                 {!active && run.status !== "skipped" && run.exitCode >= 0 && <span>{f(t.process.exit, { code: run.exitCode })}</span>}
                 {run.pid > 0 && <span>{t.process.pid} {run.pid}</span>}

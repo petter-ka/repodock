@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import { AppRail } from "@/components/layout/AppRail"
-import { clampPosition, FloatingWindow } from "@/components/shared/FloatingWindow"
+import { clampPosition, clampSize, FloatingWindow } from "@/components/shared/FloatingWindow"
 import { Toaster } from "@/components/shared/Toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider, useI18n } from "@/lib/i18n"
+import { modLabel } from "@/lib/keyboard"
 import { readPreference, writePreference } from "@/lib/preferences"
 import { ThemeProvider } from "@/lib/theme"
 import { ClosingOverlay } from "@/modules/app-closing"
@@ -37,11 +38,15 @@ function Shell() {
   }
 
   const openApps = useMiniApps()
+  const toggleMiniApp = (id: string) => {
+    const app = miniAppList.find((candidate) => candidate.id === id)
+    miniApps.toggle(id, { maximized: app?.resizable && app.openMaximized })
+  }
   const View = (modules.find((m) => m.id === active) ?? modules[0]).View
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
-      <AppRail modules={modules} active={active} onChange={select} miniApps={miniAppList} openMiniApps={openApps.open} onToggleMiniApp={miniApps.toggle} />
+      <AppRail modules={modules} active={active} onChange={select} miniApps={miniAppList} openMiniApps={openApps.open} onToggleMiniApp={toggleMiniApp} />
       <View />
       <MiniAppHost />
       <LeftoverProcessesDialog />
@@ -55,8 +60,8 @@ function Shell() {
 
 /** Renders the open mini apps as floating windows above the current view. */
 function MiniAppHost() {
-  const { t } = useI18n()
-  const { open, positions } = useMiniApps()
+  const { t, f } = useI18n()
+  const { open, positions, sizes, maximized } = useMiniApps()
   return (
     <>
       {open.map((id, index) => {
@@ -65,17 +70,27 @@ function MiniAppHost() {
         // Until moved, windows cascade from the top-right corner by registry
         // order (not stacking order, so focusing one never moves another).
         const slot = miniAppList.indexOf(app)
-        const position = positions[id] ?? clampPosition(window.innerWidth - app.width - 24 - slot * 24, 72 + slot * 24, app.width)
+        const size = sizes[id] ?? (app.height === undefined ? undefined : clampSize(app.width, app.height))
+        const width = app.resizable && size ? size.width : app.width
+        const height = app.resizable && size ? size.height : app.height
+        const position = positions[id] ?? clampPosition(window.innerWidth - width - 24 - slot * 24, 72 + slot * 24, width)
         const close = () => miniApps.close(id)
         return (
           <FloatingWindow
             key={id}
             title={app.label(t)}
             icon={app.icon}
-            width={app.width}
+            width={width}
+            height={height}
             position={position}
             zIndex={30 + index}
             closeLabel={t.common.close}
+            resize={app.resizable ? {
+              maximized: maximized.includes(id),
+              labels: { maximize: t.miniApps.maximize, restore: t.miniApps.restore, resize: f(t.miniApps.resize, { mod: modLabel }) },
+              onResize: (next, persist) => miniApps.resize(id, next, persist),
+              onToggleMaximized: () => miniApps.toggleMaximized(id),
+            } : undefined}
             onMove={(next, persist) => miniApps.move(id, next, persist)}
             onFocus={() => miniApps.focus(id)}
             onClose={close}

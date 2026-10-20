@@ -108,12 +108,12 @@ export function GlobalCommandsDialog({ open, actions, onOpenChange }: {
                       className={cn("h-9 text-sm", error?.name && "border-destructive")}
                     />
                   </label>
-                  <span className="shrink-0 pb-2 text-[11px] text-muted-foreground">{uses ? f(t.globalCommands.usedBy, { count: uses }) : t.globalCommands.unused}</span>
+                  <span className="shrink-0 pb-2 text-[0.6875rem] text-muted-foreground">{uses ? f(t.globalCommands.usedBy, { count: uses }) : t.globalCommands.unused}</span>
                   <Tooltip label={t.globalCommands.remove}>
                     <Button size="icon" variant="ghost" aria-label={t.globalCommands.remove} className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setDraft((list) => list.filter((c) => c.id !== cmd.id))}><Trash2 /></Button>
                   </Tooltip>
                 </div>
-                {error?.name && <p className="-mt-2 text-[11px] text-destructive">{error.name}</p>}
+                {error?.name && <p className="-mt-2 text-[0.6875rem] text-destructive">{error.name}</p>}
                 <label className="block space-y-1">
                   <span className="text-xs font-medium text-muted-foreground">{t.globalCommands.command}</span>
                   <div className={cn("flex items-center rounded-lg border bg-background focus-within:ring-2 focus-within:ring-ring", error?.command ? "border-destructive" : "border-border")}>
@@ -129,7 +129,7 @@ export function GlobalCommandsDialog({ open, actions, onOpenChange }: {
                     />
                   </div>
                 </label>
-                {error?.command && <p className="-mt-2 text-[11px] text-destructive">{error.command}</p>}
+                {error?.command && <p className="-mt-2 text-[0.6875rem] text-destructive">{error.command}</p>}
               </li>
             )
           })}

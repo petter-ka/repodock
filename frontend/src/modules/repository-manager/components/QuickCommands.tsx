@@ -80,7 +80,7 @@ export function QuickCommands({ repo, runningQuickIds, backgroundCount, backgrou
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropSlot(null) }}
       onDrop={drop}
     >
-      <h2 className="flex h-6 shrink-0 items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"><Zap className="size-3" /> {t.quick.title}</h2>
+      <h2 className="flex h-6 shrink-0 items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground"><Zap className="size-3" /> {t.quick.title}</h2>
       <ol className={cn("flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-1 rounded-md transition", dropSlot !== null && "bg-primary/5 ring-1 ring-primary/30")}>
         {quick.length === 0 && (
           <li className="flex h-6 items-center rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground">{t.quick.empty}</li>

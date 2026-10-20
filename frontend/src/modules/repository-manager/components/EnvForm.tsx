@@ -46,8 +46,8 @@ export function EnvForm({ draft, saved, revealed, onChange }: {
   return (
     <div className="console-scrollbar absolute inset-0 overflow-auto bg-background p-4">
       <div className="grid grid-cols-[minmax(140px,2fr)_minmax(0,3fr)_auto] items-center gap-x-2 gap-y-1.5">
-        <span className="px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.env.key}</span>
-        <span className="px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.env.value}</span>
+        <span className="px-1 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.env.key}</span>
+        <span className="px-1 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.env.value}</span>
         <span />
         {entries.length === 0 && <p className="col-span-3 py-3 text-sm text-muted-foreground">{t.env.noVariables}</p>}
         {entries.map((entry) => (
@@ -88,9 +88,9 @@ export function EnvForm({ draft, saved, revealed, onChange }: {
           className="mt-2 h-8 font-mono text-xs"
         />
         <Button size="sm" variant="outline" className="mt-2" disabled={!newKey || !!newKeyError} onClick={add}><Plus /> {t.env.addVariable}</Button>
-        {newKeyError && <p role="alert" className="col-span-3 px-1 text-[11px] text-destructive">{newKeyError}</p>}
+        {newKeyError && <p role="alert" className="col-span-3 px-1 text-[0.6875rem] text-destructive">{newKeyError}</p>}
       </div>
-      <p className="mt-4 text-[11px] text-muted-foreground">{t.env.formNote}</p>
+      <p className="mt-4 text-[0.6875rem] text-muted-foreground">{t.env.formNote}</p>
     </div>
   )
 }

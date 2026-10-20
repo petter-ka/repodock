@@ -51,3 +51,5 @@ Use the following template for new architectural decisions:
 | 0026 | Open a folder from the command line; one RepoDock per workspace | Accepted |
 | 0027 | A workspace dashboard as the default "All repositories" view | Accepted |
 | 0028 | Continuous repositories in group runs; parallel by default | Accepted |
+| 0029 | "GraphQL map" mini app; resizable mini app windows | Accepted |
+| 0030 | Text size and spacing settings (S/M/L/XL) | Accepted |

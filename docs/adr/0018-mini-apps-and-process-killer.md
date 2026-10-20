@@ -1,6 +1,6 @@
 # ADR-0018: Mini apps (floating tools) and the "Kill process" app
 
-- Status: Accepted
+- Status: Accepted (amended by ADR-0029: windows may be resizable)
 - Date: 2026-10-07
 
 ## Context

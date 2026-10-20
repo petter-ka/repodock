@@ -6,6 +6,7 @@ import { locales, useI18n, type Locale } from "@/lib/i18n"
 import { modLabel } from "@/lib/keyboard"
 import { useTheme, type ThemeMode } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import { appearance, DEFAULT_SIZE, SIZES, useAppearance, type Size } from "@/state/appearance"
 import { CONSOLE_LIMITS, consoleLimit, useConsoleLimit, type ConsoleLimit } from "@/state/consoleLimit"
 
 const themeIcons: Record<ThemeMode, React.ReactNode> = {
@@ -55,6 +56,8 @@ export function SettingsView() {
   const { mode, setMode } = useTheme()
   const { locale, setLocale, t, f } = useI18n()
   const limit = useConsoleLimit()
+  const size = useAppearance()
+  const sizeOptions = SIZES.map((value) => ({ value, label: t.settings.sizes[value] }))
   const [workspacePath, setWorkspacePath] = useState("")
   const backend = getBackend()
 
@@ -89,6 +92,21 @@ export function SettingsView() {
               onChange={setMode}
               options={(["system", "light", "dark"] as ThemeMode[]).map((value) => ({ value, label: t.common[value], icon: themeIcons[value] }))}
             />
+          </Card>
+          <Card title={t.settings.size} hint={t.settings.sizeHint}>
+            <div className="flex flex-wrap gap-x-10">
+              {([["text", t.settings.textSize], ["spacing", t.settings.spacing]] as const).map(([key, label]) => (
+                <div key={key}>
+                  <h3 className="mt-4 text-xs font-medium text-muted-foreground">{label}</h3>
+                  <Segmented<Size> label={label} value={size[key]} onChange={(value) => appearance.set({ [key]: value })} options={sizeOptions} />
+                </div>
+              ))}
+            </div>
+            {(size.text !== DEFAULT_SIZE || size.spacing !== DEFAULT_SIZE) && (
+              <button onClick={() => appearance.set({ text: DEFAULT_SIZE, spacing: DEFAULT_SIZE })} className="mt-3 block text-xs font-medium text-primary hover:underline">
+                {t.settings.resetSize}
+              </button>
+            )}
           </Card>
           <Card title={t.settings.language} hint={t.settings.languageHint}>
             <Segmented

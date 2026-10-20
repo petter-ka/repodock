@@ -133,7 +133,7 @@ export function LaunchFolderDialog({ onShow }: { onShow: () => void }) {
 
             {folder.valid && (
               <fieldset className="grid gap-1.5">
-                <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.launch.group}</legend>
+                <legend className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.launch.group}</legend>
                 <div className="thin-scrollbar grid max-h-64 gap-1.5 overflow-y-auto pr-0.5">
                   {workspace.groups.map((group) => (
                     <GroupOption key={group.id} checked={groupId === group.id} onSelect={() => setGroupId(group.id)} label={group.name} hint={f(t.launch.members, { count: counts.get(group.id) ?? 0 })} />

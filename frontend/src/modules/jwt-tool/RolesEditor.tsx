@@ -58,7 +58,7 @@ export function RolesEditor({ value, onChange }: { value: Roles; onChange: (next
         {canAdd && <Button size="xs" variant="outline" onClick={add}><Plus /> <span className="max-w-[140px] truncate">{f(t.jwt.addRole, { role: typed })}</span></Button>}
       </div>
 
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-[0.6875rem] text-muted-foreground">
         <span>{f(t.jwt.rolesSelected, { selected: value.selectedRoles.length, total: value.roles.length })}</span>
         {shown.length > 0 && (
           <span className="ml-auto flex gap-2">

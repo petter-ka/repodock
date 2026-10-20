@@ -83,7 +83,7 @@ export function StatTile({ label, value, detail, icon, meter, tone = "default" }
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.round(Math.min(1, Math.max(0, meter)) * 100)}%` }} />
         </div>
       )}
-      {detail && <div className="mt-1.5 truncate text-[11px] text-muted-foreground">{detail}</div>}
+      {detail && <div className="mt-1.5 truncate text-[0.6875rem] text-muted-foreground">{detail}</div>}
     </div>
   )
 }
@@ -196,7 +196,7 @@ export function Donut({ items, total, caption }: { items: Array<{ key: string; l
       </svg>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-semibold tabular-nums">{total}</span>
-        <span className="text-[11px] text-muted-foreground">{caption}</span>
+        <span className="text-[0.6875rem] text-muted-foreground">{caption}</span>
       </div>
     </div>
   )

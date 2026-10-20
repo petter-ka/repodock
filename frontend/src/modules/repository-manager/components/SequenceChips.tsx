@@ -61,7 +61,7 @@ export function SequenceChips({ repo, sequence, runningLabels, onRunScript, onRu
 
   return (
     <section aria-label={t.sequence.title} className="flex items-start gap-2 px-6 pt-3">
-      <h2 className="flex h-6 shrink-0 items-center text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.quickSequence.title}</h2>
+      <h2 className="flex h-6 shrink-0 items-center text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t.quickSequence.title}</h2>
       <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {steps.length === 0 && (
           <li>
@@ -104,10 +104,10 @@ export function SequenceChips({ repo, sequence, runningLabels, onRunScript, onRu
                     )}
                   >
                     {problem ? <AlertTriangle className="size-3 shrink-0 text-warning" />
-                      : icon ?? <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground group-hover/chip:hidden">{index + 1}</span>}
+                      : icon ?? <span className="shrink-0 text-[0.625rem] tabular-nums text-muted-foreground group-hover/chip:hidden">{index + 1}</span>}
                     {!problem && !icon && run && <Play className="hidden size-3 shrink-0 text-primary group-hover/chip:block" />}
                     <span className="truncate font-medium">{name}</span>
-                    {step.background && <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground">bg</span>}
+                    {step.background && <span className="shrink-0 text-[0.5625rem] uppercase tracking-wide text-muted-foreground">bg</span>}
                   </button>
                 </Tooltip>
               </li>

@@ -301,7 +301,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                 className={cn("group/header flex items-center gap-1 rounded-md pl-1 pr-1 transition", canDrag && "cursor-grab active:cursor-grabbing", dropSlot !== null && (collapsed || repos.length === 0) && "bg-primary/10 ring-1 ring-primary/40")}
               >
                 <button
-                  className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   aria-expanded={!collapsed}
                   onClick={() => void actions.setGroupCollapsed(group.id, !group.collapsed)}
                 >
@@ -331,7 +331,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                   </DropdownMenu>
                 )}
                 {groupRunning && (
-                  <span className="flex items-center gap-1 text-[10px] tabular-nums text-success" aria-live="polite">
+                  <span className="flex items-center gap-1 text-[0.625rem] tabular-nums text-success" aria-live="polite">
                     <Loader2 className="size-3 animate-spin" />
                     {runnable.length > 0 && f(t.groupRun.progress, { done: finished, total: runnable.length })}
                     {up > 0 && <span className="inline-flex items-center gap-0.5"><InfinityIcon className="size-3" />{f(t.continuous.up, { count: up })}</span>}
@@ -367,23 +367,23 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                       <DropdownMenuRadioItem value="sequential" disabled={groupRunning} className="items-start">
                         <div>
                           <div className="flex items-center gap-1.5"><ListOrdered className="size-3.5" /> {t.groupRun.sequential}</div>
-                          <div className="text-[11px] text-muted-foreground">{t.groupRun.sequentialHint}</div>
+                          <div className="text-[0.6875rem] text-muted-foreground">{t.groupRun.sequentialHint}</div>
                         </div>
                       </DropdownMenuRadioItem>
                       <DropdownMenuRadioItem value="parallel" disabled={groupRunning} className="items-start">
                         <div>
                           <div className="flex items-center gap-1.5"><Columns3 className="size-3.5" /> {t.groupRun.parallel}</div>
-                          <div className="text-[11px] text-muted-foreground">{t.groupRun.parallelHint}</div>
+                          <div className="text-[0.6875rem] text-muted-foreground">{t.groupRun.parallelHint}</div>
                         </div>
                       </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger disabled={repos.length === 0}>
                         <ListChecks /> {t.skip.members}
-                        {skipped.size > 0 && <span className="ml-auto whitespace-nowrap pl-2 text-[11px] tabular-nums text-muted-foreground">{f(t.skip.count, { count: skipped.size })}</span>}
+                        {skipped.size > 0 && <span className="ml-auto whitespace-nowrap pl-2 text-[0.6875rem] tabular-nums text-muted-foreground">{f(t.skip.count, { count: skipped.size })}</span>}
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-72">
-                        <p className="px-2.5 pb-1.5 pt-1 text-[11px] leading-snug text-muted-foreground">{t.skip.membersHint}</p>
+                        <p className="px-2.5 pb-1.5 pt-1 text-[0.6875rem] leading-snug text-muted-foreground">{t.skip.membersHint}</p>
                         {repos.map((repo) => (
                           <DropdownMenuCheckboxItem
                             key={repo.id}
@@ -400,7 +400,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                     </DropdownMenuSub>
                     <DropdownMenuItem onSelect={() => setScheduleFor([group.id])}>
                       <AlarmClock /> {t.schedule.menu}
-                      <span className="ml-auto max-w-36 truncate pl-2 text-[11px] text-muted-foreground">{groupScheduleText}</span>
+                      <span className="ml-auto max-w-36 truncate pl-2 text-[0.6875rem] text-muted-foreground">{groupScheduleText}</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => void actions.addRepository(group.id)}><Plus /> {t.sidebar.addHere}</DropdownMenuItem>
@@ -588,7 +588,7 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
         ) : running > 0 ? (
           <Badge variant="success" className="tabular-nums">{running}</Badge>
         ) : (
-          <span className="text-[10px] uppercase tracking-wide opacity-60">{repo.packageManager || t.sidebar.folder}</span>
+          <span className="text-[0.625rem] uppercase tracking-wide opacity-60">{repo.packageManager || t.sidebar.folder}</span>
         )}
       </button>
       <DropdownMenu>

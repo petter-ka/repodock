@@ -15,4 +15,23 @@ describe("miniApps store", () => {
     miniApps.close("b")
     expect(miniApps.get().open).toEqual([])
   })
+
+  it("remembers sizes and maximized windows", () => {
+    miniApps.resize("a", { width: 900, height: 600 })
+    expect(miniApps.get().sizes.a).toEqual({ width: 900, height: 600 })
+    miniApps.toggleMaximized("a")
+    expect(miniApps.isMaximized("a")).toBe(true)
+    miniApps.toggleMaximized("a")
+    expect(miniApps.isMaximized("a")).toBe(false)
+  })
+
+  it("opens maximized when asked, every time", () => {
+    miniApps.toggle("m", { maximized: true })
+    expect(miniApps.isMaximized("m")).toBe(true)
+    miniApps.toggleMaximized("m")
+    miniApps.toggle("m")
+    expect(miniApps.isMaximized("m")).toBe(false)
+    miniApps.toggle("m", { maximized: true })
+    expect(miniApps.isOpen("m") && miniApps.isMaximized("m")).toBe(true)
+  })
 })

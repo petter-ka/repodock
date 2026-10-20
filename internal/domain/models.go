@@ -578,3 +578,21 @@ type JWTDecoded struct {
 	Signature      string   `json:"signature"`
 	SignatureError string   `json:"signatureError"`
 }
+
+// GraphQLFile is one schema file found by the "GraphQL map" mini app.
+// Path is relative to the scanned folder, with forward slashes.
+type GraphQLFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Size    int64  `json:"size"`
+}
+
+// GraphQLScan lists the schema files under one folder. Truncated is set when
+// a limit (file count or total size) stopped the scan early; Skipped counts
+// files left out for being too large.
+type GraphQLScan struct {
+	Root      string        `json:"root"`
+	Files     []GraphQLFile `json:"files"`
+	Truncated bool          `json:"truncated"`
+	Skipped   int           `json:"skipped"`
+}

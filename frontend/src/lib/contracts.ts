@@ -76,6 +76,10 @@ export type JwtDecoded = {
   signatureError: string
 }
 
+/** A GraphQL schema file; path is relative to the scanned folder (ADR-0029). */
+export type GraphQLFile = { path: string; content: string; size: number }
+export type GraphQLScan = { root: string; files: GraphQLFile[]; truncated: boolean; skipped: number }
+
 /** A pinned script, global command or shell command (exactly one is set). */
 export type QuickCommand = { id: string; label: string; script: string; globalCommand: string; command: string }
 
@@ -312,6 +316,9 @@ export type AppBinding = {
   SaveJWTSettings(settings: JwtSettings): Promise<JwtSettings>
   GenerateJWT(settings: JwtSettings): Promise<JwtToken>
   DecodeJWT(token: string, settings: JwtSettings): Promise<JwtDecoded>
+  ScanGraphQLFiles(folder: string): Promise<GraphQLScan>
+  /** "" when cancelled */
+  BrowseGraphQLFolder(): Promise<string>
   MoveGroup(id: string, index: number): Promise<void>
   SetGroupRunMode(id: string, mode: GroupRunMode): Promise<void>
   SetRepositorySkipped(repoID: string, skipped: boolean): Promise<void>

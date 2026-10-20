@@ -71,6 +71,13 @@
   --series-other: oklch(0.45 0.01 276);
 }
 
+/* Spacing setting (S/M/L/XL, state/appearance.ts): Tailwind's spacing unit is
+   4px × --ui-spacing, in px so it does not follow the Text size setting,
+   which changes the root font size (rem). M (1) equals Tailwind's default. */
+@theme {
+  --spacing: calc(4px * var(--ui-spacing, 1));
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -189,7 +189,7 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
                 <Button variant="outline" size="sm" disabled={!file} onClick={() => setRevealed((value) => !value)}>
                   {revealed ? <><EyeOff /> {t.env.hide}</> : <><Eye /> {view === "form" ? t.env.showValues : t.env.reveal}</>}
                 </Button>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[0.6875rem] text-muted-foreground">
                   {dirty ? <span className="font-medium text-warning">{t.env.unsaved}</span> : file ? f(t.env.modified, { time: formatTime(file.modifiedAt) }) : null}
                 </span>
                 <Button className="ml-auto" size="sm" title={`${modLabel}+S`} disabled={!dirty || saving} onClick={requestSave}>

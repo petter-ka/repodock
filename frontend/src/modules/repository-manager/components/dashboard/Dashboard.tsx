@@ -84,7 +84,7 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
                 const count = data.groups.reduce((n, g) => n + g.readiness[key], 0)
                 return (
                   <div key={key} className="rounded-lg bg-muted/50 px-3 py-2">
-                    <dt className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <dt className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
                       <span className="size-2 shrink-0 rounded-[2px]" style={swatch(readiness[key].color, readiness[key].hatched)} />
                       <span className="truncate">{readiness[key].label}</span>
                     </dt>
@@ -153,7 +153,7 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
         </div>
 
         <section>
-          <h2 className="mb-3 mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.dashboard.groupsTitle}</h2>
+          <h2 className="mb-3 mt-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t.dashboard.groupsTitle}</h2>
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {data.groups.map((stats) => <GroupCard key={stats.group.id} stats={stats} actions={actions} onSchedule={() => setScheduleFor([stats.group.id])} />)}
           </div>
@@ -231,7 +231,7 @@ function WeekChart({ groups, onSchedule, className }: { groups: GroupStats[]; on
         <>
           <div className="grid grid-cols-[2.75rem_1fr] gap-x-2">
             <span />
-            <div className="relative mb-1 h-3 text-[10px] tabular-nums text-muted-foreground">
+            <div className="relative mb-1 h-3 text-[0.625rem] tabular-nums text-muted-foreground">
               {[0, 6, 12, 18, 24].map((h) => (
                 <span key={h} className={cn("absolute", h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2")} style={{ left: pct(h * 60) }}>{String(h).padStart(2, "0")}</span>
               ))}
@@ -370,7 +370,7 @@ function GroupCard({ stats, actions, onSchedule }: { stats: GroupStats; actions:
                         : <Boxes className="size-3 shrink-0 text-muted-foreground" />}
                   <span className="truncate">{displayName(repo)}</span>
                   {repo.continuous && <InfinityIcon className="size-3 shrink-0 text-muted-foreground" aria-label={t.continuous.marker} />}
-                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{repo.packageManager || t.sidebar.folder}</span>
+                  <span className="text-[0.625rem] uppercase tracking-wide text-muted-foreground">{repo.packageManager || t.sidebar.folder}</span>
                 </button>
               </li>
             )
@@ -388,7 +388,7 @@ function GroupCard({ stats, actions, onSchedule }: { stats: GroupStats; actions:
         <Button size="xs" variant="ghost" onClick={onSchedule}>{scheduled ? t.schedule.menu : t.dashboard.setSchedule}</Button>
       </footer>
       {groupRun && !runningGroup && (
-        <p className="-mt-1 text-[11px] text-muted-foreground">{f(t.dashboard.lastRun, { status: t.groupRun.status[groupRun.status] })}</p>
+        <p className="-mt-1 text-[0.6875rem] text-muted-foreground">{f(t.dashboard.lastRun, { status: t.groupRun.status[groupRun.status] })}</p>
       )}
     </article>
   )
