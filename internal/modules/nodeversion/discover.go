@@ -15,6 +15,10 @@ type Env struct {
 	Getenv func(string) string
 	// GOOS selects the folder layouts ("darwin", "linux", "windows").
 	GOOS string
+	// Root is where fixed system locations (/usr/local/n, /opt/homebrew,
+	// …) are looked up; empty means the real filesystem root. Tests point
+	// it at a folder of their own so the machine's installs stay out.
+	Root string
 }
 
 func (e Env) get(key string) string {
@@ -29,6 +33,14 @@ func (e Env) home(parts ...string) string {
 		return ""
 	}
 	return filepath.Join(append([]string{e.Home}, parts...)...)
+}
+
+// system returns a fixed system location under Root.
+func (e Env) system(path string) string {
+	if e.Root == "" {
+		return path
+	}
+	return filepath.Join(e.Root, filepath.FromSlash(path))
 }
 
 func (e Env) nodeExe() string {
@@ -157,7 +169,7 @@ func managers() []manager {
 				if e.GOOS == "windows" {
 					return nil
 				}
-				roots := []string{"/usr/local/n"}
+				roots := []string{e.system("/usr/local/n")}
 				if prefix := e.get("N_PREFIX"); prefix != "" {
 					roots = append([]string{filepath.Join(prefix, "n")}, roots...)
 				}
@@ -223,7 +235,7 @@ func managers() []manager {
 				if e.GOOS == "windows" {
 					return nil
 				}
-				return []string{e.get("HOMEBREW_PREFIX"), "/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew"}
+				return []string{e.get("HOMEBREW_PREFIX"), e.system("/opt/homebrew"), e.system("/usr/local"), e.system("/home/linuxbrew/.linuxbrew")}
 			},
 			// Cellar/node/<version> and Cellar/node@<major>/<version>.
 			versions: func(e Env, root string) []found {

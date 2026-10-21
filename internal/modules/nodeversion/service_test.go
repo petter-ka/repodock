@@ -105,7 +105,7 @@ func fakeHome(t *testing.T) string {
 func newTestService(t *testing.T, home, pathList string, probe func(string, string) (string, error)) *Service {
 	t.Helper()
 	return New(Options{
-		Env:        Env{Home: home, Getenv: func(string) string { return "" }, GOOS: "linux"},
+		Env:        Env{Home: home, Getenv: func(string) string { return "" }, GOOS: "linux", Root: filepath.Join(home, "system-root")},
 		SearchPath: func() string { return pathList },
 		FindExecutable: func(name, list string) string {
 			for _, dir := range filepath.SplitList(list) {
@@ -199,6 +199,33 @@ func TestResolveOrder(t *testing.T) {
 	}
 	if !s.Installed("v20.11.1") || s.Installed("20") || s.Installed("19.0.0") {
 		t.Fatal("Installed must match exact installed versions only")
+	}
+}
+
+// n and Homebrew live in fixed system folders; they are found under Root,
+// and nothing from the real machine leaks into a test.
+func TestSystemLocations(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "system-root")
+	for _, dir := range []string{
+		filepath.Join(root, "usr", "local", "n", "versions", "node", "22.23.3", "bin"),
+		filepath.Join(root, "opt", "homebrew", "Cellar", "node@24", "24.21.0_2", "bin"),
+		filepath.Join(root, "opt", "homebrew", "Cellar", "python@3.12", "3.12.1", "bin"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "node"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := newTestService(t, home, "", nil)
+	var got []string
+	for _, in := range s.Overview(nil).Installs {
+		got = append(got, in.Manager+"@"+in.Version)
+	}
+	if len(got) != 2 || got[0] != "homebrew@24.21.0" || got[1] != "n@22.23.3" {
+		t.Fatalf("installs = %v", got)
 	}
 }
 

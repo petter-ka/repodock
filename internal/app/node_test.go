@@ -30,7 +30,7 @@ func fakeNodes(t *testing.T, a *App) (home string) {
 		}
 	}
 	a.node = nodemod.New(nodemod.Options{
-		Env:            nodemod.Env{Home: home, Getenv: func(string) string { return "" }, GOOS: runtime.GOOS},
+		Env:            nodemod.Env{Home: home, Getenv: func(string) string { return "" }, GOOS: runtime.GOOS, Root: filepath.Join(home, "system-root")},
 		SearchPath:     func() string { return "" },
 		FindExecutable: processmod.LookPath,
 		Now:            time.Now,

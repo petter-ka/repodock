@@ -35,7 +35,7 @@ func ancestors(dir string) []string {
 	current := dir
 	for range maxAncestors {
 		parent := filepath.Dir(current)
-		if parent == current || (home != "" && samePath(parent, home)) {
+		if parent == current || filepath.Dir(parent) == parent || (home != "" && samePath(parent, home)) {
 			break
 		}
 		out = append(out, parent)
