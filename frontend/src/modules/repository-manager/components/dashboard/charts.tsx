@@ -203,7 +203,7 @@ export function Donut({ items, total, caption }: { items: Array<{ key: string; l
 }
 
 /** Ranked single-series bars with the value at the tip. */
-export function BarList({ items }: { items: Array<{ key: string; label: string; value: number; muted?: boolean }> }) {
+export function BarList({ items }: { items: Array<{ key: string; label: string; value: number; muted?: boolean; warning?: boolean }> }) {
   const max = Math.max(1, ...items.map((item) => item.value))
   return (
     <ul className="grid gap-2">
@@ -211,7 +211,7 @@ export function BarList({ items }: { items: Array<{ key: string; label: string; 
         <li key={item.key} className="grid grid-cols-[minmax(0,7rem)_1fr] items-center gap-3 text-xs">
           <span className={cn("truncate", item.muted ? "text-muted-foreground" : "font-medium")}>{item.label}</span>
           <div className="flex items-center gap-2">
-            <span className={cn("h-3 rounded-r-[4px]", item.muted ? "bg-[var(--series-other)]" : "bg-primary")} style={{ width: `${(item.value / max) * 100}%`, minWidth: 3 }} />
+            <span className={cn("h-3 rounded-r-[4px]", item.warning ? "bg-warning" : item.muted ? "bg-[var(--series-other)]" : "bg-primary")} style={{ width: `${(item.value / max) * 100}%`, minWidth: 3 }} />
             <span className="tabular-nums text-muted-foreground">{item.value}</span>
           </div>
         </li>

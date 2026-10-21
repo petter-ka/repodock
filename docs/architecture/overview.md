@@ -40,7 +40,19 @@ Responsibilities:
 - Validate repository folder.
 - Read `package.json`.
 - Discover scripts.
-- Detect package manager.
+- Detect package manager, also from a workspace root above the folder (ADR-0032).
+- Detect monorepo tooling and Turborepo/Nx tasks (ADR-0032).
+- Read what the folder asks for its Node.js version (ADR-0031).
+
+### nodeversion
+Responsibilities:
+- Find Node.js versions installed by version managers, by reading their folders (ADR-0031).
+- Find the shell's default node.
+- Resolve the version a repository runs with: choice → version file → default.
+
+### updates
+Responsibilities:
+- Fetch GitHub releases on request and compare them with the running version (ADR-0034).
 
 ### process
 Responsibilities:
@@ -70,7 +82,7 @@ Responsibilities:
 
 ### environment
 Responsibilities:
-- Discover candidate env files.
+- Discover env files in the folder and its sub-folders, within limits (ADR-0033).
 - Read file content.
 - Write content atomically.
 

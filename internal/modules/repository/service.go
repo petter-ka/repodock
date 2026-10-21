@@ -31,12 +31,18 @@ type Metadata struct {
 	Path           string
 	Name           string
 	PackageManager string
-	Scripts        []domain.Script
+	// PackageManagerVersion is pinned by a packageManager field; "" if not.
+	PackageManagerVersion string
+	Scripts               []domain.Script
 	// Dependencies and DevDependencies count the package.json entries.
 	Dependencies    int
 	DevDependencies int
 	// Stack lists well-known frameworks and tools among the dependencies.
 	Stack []string
+	// Monorepo is the workspace tooling of the folder or its workspace root.
+	Monorepo domain.Monorepo
+	// NodeRequest is the Node.js version the folder asks for.
+	NodeRequest domain.NodeRequest
 }
 
 type Service struct{}
@@ -72,25 +78,12 @@ func (s *Service) Inspect(path string) (Metadata, error) {
 	if err != nil {
 		return Metadata{}, err
 	}
-	meta := Metadata{Path: abs, Name: filepath.Base(abs), Scripts: []domain.Script{}, Stack: []string{}}
+	meta := Metadata{Path: abs, Name: filepath.Base(abs), Scripts: []domain.Script{}, Stack: []string{}, Monorepo: emptyMonorepo()}
+	parents := ancestors(abs)
+	// Version files apply to plain folders too.
+	meta.NodeRequest = nodeRequest(abs, packageJSON{}, parents)
 
-	file, err := os.Open(filepath.Join(abs, "package.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return meta, ErrNoPackageJSON
-	}
-	if err != nil {
-		return meta, fmt.Errorf("open package.json: %w", err)
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxPackageJSONSize+1))
-	if err != nil {
-		return meta, fmt.Errorf("read package.json: %w", err)
-	}
-	if len(data) > maxPackageJSONSize {
-		return meta, fmt.Errorf("package.json is larger than %d bytes", maxPackageJSONSize)
-	}
-
-	pkg, err := parsePackageJSON(data)
+	pkg, err := readPackageJSON(abs)
 	if err != nil {
 		return meta, err
 	}
@@ -101,8 +94,31 @@ func (s *Service) Inspect(path string) (Metadata, error) {
 	meta.Dependencies = len(pkg.Dependencies)
 	meta.DevDependencies = len(pkg.DevDependencies)
 	meta.Stack = DetectStack(pkg.Dependencies, pkg.DevDependencies)
-	meta.PackageManager = DetectPackageManager(abs, pkg.PackageManager)
+	meta.PackageManager, meta.PackageManagerVersion = detectPackageManager(abs, pkg.PackageManager, parents)
+	meta.Monorepo = detectMonorepo(abs, pkg, parents)
+	meta.NodeRequest = nodeRequest(abs, pkg, parents)
 	return meta, nil
+}
+
+// readPackageJSON reads and parses dir/package.json. It returns
+// ErrNoPackageJSON when there is none.
+func readPackageJSON(dir string) (packageJSON, error) {
+	file, err := os.Open(filepath.Join(dir, "package.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return packageJSON{}, ErrNoPackageJSON
+	}
+	if err != nil {
+		return packageJSON{}, fmt.Errorf("open package.json: %w", err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxPackageJSONSize+1))
+	if err != nil {
+		return packageJSON{}, fmt.Errorf("read package.json: %w", err)
+	}
+	if len(data) > maxPackageJSONSize {
+		return packageJSON{}, fmt.Errorf("package.json is larger than %d bytes", maxPackageJSONSize)
+	}
+	return parsePackageJSON(data)
 }
 
 type packageJSON struct {
@@ -111,6 +127,11 @@ type packageJSON struct {
 	Scripts         []domain.Script
 	Dependencies    map[string]any
 	DevDependencies map[string]any
+	// EnginesNode is "engines.node"; VoltaNode is "volta.node".
+	EnginesNode string
+	VoltaNode   string
+	// Workspaces is true when "workspaces" lists member packages.
+	Workspaces bool
 }
 
 // parsePackageJSON decodes the fields RepoDock needs while preserving the
@@ -124,6 +145,9 @@ func parsePackageJSON(data []byte) (packageJSON, error) {
 		// Malformed dependency maps are ignored rather than failing discovery.
 		Dependencies    any `json:"dependencies"`
 		DevDependencies any `json:"devDependencies"`
+		Engines         any `json:"engines"`
+		Volta           any `json:"volta"`
+		Workspaces      any `json:"workspaces"`
 	}
 	if err := json.Unmarshal(data, &shape); err != nil {
 		return out, fmt.Errorf("invalid package.json: %w", err)
@@ -132,6 +156,9 @@ func parsePackageJSON(data []byte) (packageJSON, error) {
 	out.DevDependencies, _ = shape.DevDependencies.(map[string]any)
 	out.Name, _ = shape.Name.(string)
 	out.PackageManager, _ = shape.PackageManager.(string)
+	out.EnginesNode = cleanSpec(stringField(shape.Engines, "node"))
+	out.VoltaNode = cleanSpec(stringField(shape.Volta, "node"))
+	out.Workspaces = hasWorkspaces(shape.Workspaces)
 	out.Scripts = []domain.Script{}
 
 	raw := bytes.TrimSpace(shape.Scripts)
@@ -194,6 +221,9 @@ var stackMarkers = []struct{ pkg, label string }{
 	{"hono", "Hono"},
 	{"electron", "Electron"},
 	{"vite", "Vite"},
+	{"turbo", "Turborepo"},
+	{"nx", "Nx"},
+	{"lerna", "Lerna"},
 	{"typescript", "TypeScript"},
 }
 
@@ -223,31 +253,68 @@ func DetectStack(deps, devDeps map[string]any) []string {
 }
 
 // DetectPackageManager uses the packageManager field, then lockfile hints,
-// then falls back to npm.
+// then the same two in the workspace folders above repoPath (a monorepo
+// member has no lockfile of its own), then falls back to npm.
 func DetectPackageManager(repoPath, packageManager string) string {
-	if packageManager != "" {
-		name := strings.ToLower(strings.TrimSpace(strings.SplitN(packageManager, "@", 2)[0]))
-		if supportedManagers[name] {
-			return name
+	name, _ := detectPackageManager(repoPath, packageManager, ancestors(repoPath))
+	return name
+}
+
+// managerHints are files that reveal the package manager, strongest first.
+var managerHints = []struct {
+	file string
+	name string
+}{
+	{"pnpm-lock.yaml", "pnpm"},
+	{"yarn.lock", "yarn"},
+	{"bun.lock", "bun"},
+	{"bun.lockb", "bun"},
+	{"package-lock.json", "npm"},
+	{"npm-shrinkwrap.json", "npm"},
+	{"pnpm-workspace.yaml", "pnpm"},
+	{".yarnrc.yml", "yarn"},
+}
+
+func detectPackageManager(dir, field string, parents []string) (name, version string) {
+	if name, version, ok := managerFromField(field); ok {
+		return name, version
+	}
+	if name := hintedManager(dir); name != "" {
+		return name, ""
+	}
+	for _, parent := range parents {
+		// An unreadable package.json above is not this repository's problem.
+		if pkg, err := readPackageJSON(parent); err == nil {
+			if name, version, ok := managerFromField(pkg.PackageManager); ok {
+				return name, version
+			}
+		}
+		if name := hintedManager(parent); name != "" {
+			return name, ""
 		}
 	}
-	checks := []struct {
-		file string
-		name string
-	}{
-		{"pnpm-lock.yaml", "pnpm"},
-		{"yarn.lock", "yarn"},
-		{"bun.lockb", "bun"},
-		{"bun.lock", "bun"},
-		{"package-lock.json", "npm"},
-		{"npm-shrinkwrap.json", "npm"},
+	return "npm", ""
+}
+
+// managerFromField parses a packageManager value such as
+// "pnpm@9.12.0+sha512.abc"; unsupported managers are not ok.
+func managerFromField(field string) (name, version string, ok bool) {
+	name, version, _ = strings.Cut(strings.TrimSpace(field), "@")
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !supportedManagers[name] {
+		return "", "", false
 	}
-	for _, c := range checks {
-		if _, err := os.Stat(filepath.Join(repoPath, c.file)); err == nil {
-			return c.name
+	version, _, _ = strings.Cut(version, "+")
+	return name, cleanSpec(version), true
+}
+
+func hintedManager(dir string) string {
+	for _, hint := range managerHints {
+		if exists(filepath.Join(dir, hint.file)) {
+			return hint.name
 		}
 	}
-	return "npm"
+	return ""
 }
 
 // ScriptArgv returns the package-manager invocation for a script as an

@@ -40,7 +40,10 @@ type Spec struct {
 	Command string
 	// Argv is a structured invocation (e.g. a package script). It is quoted
 	// by the platform layer, never concatenated by callers.
-	Argv       []string
+	Argv []string
+	// PathPrefix folders are put first on PATH, e.g. the bin folder of the
+	// repository's Node.js version (ADR-0031).
+	PathPrefix []string
 	SequenceID string
 	StepID     string
 }
@@ -163,11 +166,11 @@ func (m *Manager) Start(spec Spec) (domain.Run, error) {
 		return m.failStart(t, fmt.Errorf("working directory %q is not available", spec.Workdir)), nil
 	}
 
-	cmd := platform.ShellCommand(text, spec.Workdir)
-	cmd.Env = childEnv()
+	env := childEnv()
 	if m.opts.Guard != nil {
-		cmd.Env = m.opts.Guard.Tag(cmd.Env, t.run.ID, spec.RepositoryID)
+		env = m.opts.Guard.Tag(env, t.run.ID, spec.RepositoryID)
 	}
+	cmd := platform.ShellCommand(text, spec.Workdir, env, spec.PathPrefix)
 	cmd.WaitDelay = 2 * time.Second
 	stdout := newLineWriter(func(line string, partial bool) { m.appendOutput(t, "stdout", line, partial) }, m.opts.PromptIdle)
 	stderr := newLineWriter(func(line string, partial bool) { m.appendOutput(t, "stderr", line, partial) }, m.opts.PromptIdle)
@@ -226,6 +229,20 @@ func childEnv() []string {
 	}
 	return env
 }
+
+// SearchPath is the PATH child processes start with: the user's shell PATH
+// plus well-known tool folders. The first call may wait for the shell.
+func SearchPath() string { return platform.SearchPath() }
+
+// FindExecutable looks a command up in the pathPrefix folders, then in
+// SearchPath; "" when it is not found.
+func FindExecutable(name string, pathPrefix []string) string {
+	sep := string(os.PathListSeparator)
+	return LookPath(name, platform.MergePathLists(sep, strings.Join(pathPrefix, sep), SearchPath()))
+}
+
+// LookPath looks a command up in a PATH-style list like a shell does.
+func LookPath(name, pathList string) string { return platform.FindExecutable(name, pathList) }
 
 func (m *Manager) failStart(t *trackedRun, cause error) domain.Run {
 	m.register(t)
@@ -479,7 +496,11 @@ func (m *Manager) Stop(runID string) error {
 }
 
 // Restart stops the run if needed, waits for it, and starts the same spec.
-func (m *Manager) Restart(runID string) (domain.Run, error) {
+func (m *Manager) Restart(runID string) (domain.Run, error) { return m.RestartWith(runID, nil) }
+
+// RestartWith is Restart with a chance to update the spec before it starts
+// again (e.g. a Node.js version chosen since); nil keeps it.
+func (m *Manager) RestartWith(runID string, update func(Spec) Spec) (domain.Run, error) {
 	m.mu.RLock()
 	t, ok := m.runs[runID]
 	m.mu.RUnlock()
@@ -494,7 +515,11 @@ func (m *Manager) Restart(runID string) (domain.Run, error) {
 	case <-time.After(m.opts.StopGrace + 5*time.Second):
 		return domain.Run{}, fmt.Errorf("run %s did not stop in time", runID)
 	}
-	return m.Start(t.spec)
+	spec := t.spec
+	if update != nil {
+		spec = update(spec)
+	}
+	return m.Start(spec)
 }
 
 // StopRepository stops every active run belonging to a repository.

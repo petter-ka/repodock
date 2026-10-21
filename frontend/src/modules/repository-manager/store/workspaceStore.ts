@@ -31,7 +31,12 @@ class WorkspaceStore {
       ...workspace,
       groups: (workspace.groups ?? []).map((group) => ({ ...group, skippedRepositoryIds: group.skippedRepositoryIds ?? [], schedule: scheduleOf(group) })),
       globalCommands: workspace.globalCommands ?? [],
-      repositories: (workspace.repositories ?? []).map((repo) => ({ ...repo, scripts: repo.scripts ?? [], envFiles: repo.envFiles ?? [], stack: repo.stack ?? [], continuous: !!repo.continuous })),
+      repositories: (workspace.repositories ?? []).map((repo) => ({
+        ...repo, scripts: repo.scripts ?? [], envFiles: repo.envFiles ?? [], stack: repo.stack ?? [], continuous: !!repo.continuous,
+        packageManagerVersion: repo.packageManagerVersion ?? "", nodeVersion: repo.nodeVersion ?? "",
+        nodeRequest: repo.nodeRequest ?? { spec: "", source: "", engines: "" },
+        monorepo: { workspaces: !!repo.monorepo?.workspaces, root: repo.monorepo?.root ?? "", tools: repo.monorepo?.tools ?? [], tasks: repo.monorepo?.tasks ?? [] },
+      })),
     }
     let selected = this.state.selectedRepoId
     if (selected && !normalized.repositories.some((repo) => repo.id === selected)) selected = null

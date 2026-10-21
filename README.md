@@ -54,9 +54,17 @@ Build an ordered sequence per repository from its `package.json` scripts, shared
 
 ![The sequence editor while a sequence runs: one step done, one running, two pending](docs/screenshots/sequence.png)
 
+### Node.js versions
+
+Every repository shows the Node.js version its commands run with — from `.nvmrc`, `.node-version`, `.tool-versions`, mise or Volta, else your shell's default — and warns about end-of-life versions, missing installs and `engines` mismatches. Pick any version installed by nvm, fnm, Volta, asdf, mise, n, nodenv, nvs or Homebrew per repository. Custom commands can call `nvm` and `fnm`.
+
+### Monorepos
+
+pnpm, Yarn and Bun are detected in monorepo packages too (Corepack is used when the manager itself is not installed), and Turborepo tasks and Nx targets get their own chips.
+
 ### Environment files
 
-`.env*` files are discovered per repository and edited in a drawer, as a form or as raw text. Values stay masked until you reveal them.
+`.env`, `.env.*` and `*.env` files are discovered in each repository and its sub-folders and edited in a drawer, as a form or as raw text. Values stay masked until you reveal them.
 
 ![The environment drawer with masked values](docs/screenshots/environment.png)
 
@@ -93,7 +101,9 @@ System, light and dark themes, in English or Hungarian.
 - Independent process execution with live stdout/stderr streaming.
 - PID, RSS memory and CPU visibility.
 - Process termination.
-- `.env*` discovery with editable drawer.
+- `.env*` discovery (sub-folders included) with editable drawer.
+- Node.js version per repository from version files or a picker; monorepo package managers and Turborepo/Nx tasks.
+- Settings → About with the running version and an on-demand update check and changelog.
 - English and Hungarian localization, English by default.
 - Left application rail + grouped repository navigation + main console.
 - Feature modules isolated from shared UI and platform services.
@@ -216,7 +226,7 @@ Wails embeds the built frontend into the application binary; no Node.js installa
 1. Use Wails v2 stable first. Wails v3 is intentionally not the baseline until a migration decision is made.
 2. Treat the OS shell as an implementation detail behind `process/platform`; script names are passed as argv, never spliced into shell text (ADR-0008).
 3. Persist workspace configuration as JSON under the platform user config directory.
-4. Do not send repository contents or environment values anywhere outside the local machine.
+4. Do not send repository contents or environment values anywhere outside the local machine. The only network request is the update check, made when the user clicks it (ADR-0034).
 5. Keep modules independent. New functionality should add a module rather than grow the app shell directly.
 
 See `docs/` before changing architectural boundaries.

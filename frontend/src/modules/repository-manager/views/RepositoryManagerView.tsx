@@ -15,6 +15,7 @@ import { ProcessStrip } from "../components/ProcessStrip"
 import { RepoHeader } from "../components/RepoHeader"
 import { RepoSidebar } from "../components/RepoSidebar"
 import { ScriptChips } from "../components/ScriptChips"
+import { TaskChips } from "../components/TaskChips"
 import { SequenceChips } from "../components/SequenceChips"
 import { QuickCommands } from "../components/QuickCommands"
 import { BackgroundSheet } from "../components/BackgroundSheet"
@@ -93,6 +94,7 @@ function RepositoryPane({ repo, actions, commandRef }: {
     <>
       <RepoHeader
         repo={repo}
+        actions={actions}
         running={active.length}
         onRefresh={() => void actions.refresh(repo)}
         onSequence={() => setSheet("sequence")}
@@ -101,6 +103,7 @@ function RepositoryPane({ repo, actions, commandRef }: {
         onRelocate={() => void actions.relocate(repo)}
       />
       <ScriptChips repo={repo} runningLabels={runningLabels} onRun={(script) => void actions.runScript(repo, script).then((run) => run && setSelectedRunId(null))} />
+      <TaskChips repo={repo} runningLabels={runningLabels} onRun={(task) => void actions.runTask(repo, task.tool, task.name).then((run) => run && setSelectedRunId(null))} />
       <SequenceChips
         repo={repo}
         sequence={sequence}

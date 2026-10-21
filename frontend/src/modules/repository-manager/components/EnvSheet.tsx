@@ -1,4 +1,4 @@
-import { Code2, Eye, EyeOff, FileKey2, ListTree, Loader2, Save, ShieldAlert } from "lucide-react"
+import { Code2, Eye, EyeOff, FileKey2, Folder, ListTree, Loader2, Save, Search, ShieldAlert } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -9,6 +9,7 @@ import { cn, formatTime } from "@/lib/utils"
 import { repositoryApi } from "../api"
 import { displayName, type EnvFile, type Repository } from "../domain"
 import { diffEnv, envTimestamp, keepPreviousAsComments } from "../envDocument"
+import { groupEnvFiles } from "../envFiles"
 import { maskEnv } from "../envMask"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
 import { EnvChangesDialog } from "./EnvChangesDialog"
@@ -33,6 +34,8 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
   const [saving, setSaving] = useState(false)
   const [pending, setPending] = useState<Pending>(null)
   const [view, setView] = useState<View>("form")
+  const [fileQuery, setFileQuery] = useState("")
+  const folders = useMemo(() => groupEnvFiles(repo.envFiles, fileQuery), [repo.envFiles, fileQuery])
 
   const dirty = file !== null && draft !== file.content
   const masked = useMemo(() => (revealed ? "" : maskEnv(draft)), [revealed, draft])
@@ -126,24 +129,52 @@ export function EnvSheet({ repo, open, actions, onOpenChange }: {
         {repo.envFiles.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">{t.env.noFiles}</div>
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr]">
-            <nav aria-label={t.env.title} className="border-r border-border p-2">
-              {repo.envFiles.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => choose(name)}
-                  aria-current={selected === name ? "true" : undefined}
-                  className={cn("mb-0.5 w-full rounded-lg px-2.5 py-2 text-left font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring", selected === name ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60")}
-                >
-                  {name}
-                </button>
+          <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr]">
+            <nav aria-label={t.env.title} className="thin-scrollbar flex min-h-0 flex-col overflow-y-auto border-r border-border p-2">
+              {repo.envFiles.length > 8 && (
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={fileQuery}
+                    onChange={(event) => setFileQuery(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Escape" && fileQuery) { event.stopPropagation(); setFileQuery("") } }}
+                    placeholder={t.env.filterFiles}
+                    aria-label={t.env.filterFiles}
+                    className="h-7 w-full rounded-md border border-border bg-background pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+              )}
+              {folders.length === 0 && <p className="px-2.5 py-2 text-xs text-muted-foreground">{t.env.noFileMatch}</p>}
+              {folders.map((folder) => (
+                <div key={folder.dir} role="group" aria-label={folder.dir || t.env.root} className="mb-1.5">
+                  {(folder.dir || folders.length > 1) && (
+                    <div className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-1.5 text-[0.6875rem] font-medium text-muted-foreground" title={folder.dir || t.env.root}>
+                      <Folder className="size-3 shrink-0" />
+                      <span className="truncate font-mono">{folder.dir || t.env.root}</span>
+                    </div>
+                  )}
+                  {folder.files.map((file) => (
+                    <button
+                      key={file.name}
+                      onClick={() => choose(file.name)}
+                      aria-current={selected === file.name ? "true" : undefined}
+                      title={file.name}
+                      className={cn("mb-0.5 w-full truncate rounded-lg px-2.5 py-1.5 text-left font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring", folder.dir && "pl-6", selected === file.name ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60")}
+                    >
+                      {file.base}
+                    </button>
+                  ))}
+                </div>
               ))}
             </nav>
 
             <div className="flex min-h-0 flex-col">
               <div className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-xs">
                 <ShieldAlert className="size-3.5 shrink-0 text-warning" />
-                <span className="min-w-0 flex-1 text-muted-foreground">{t.env.sensitive}</span>
+                <span className="min-w-0 flex-1 text-muted-foreground">
+                  {selected && <span className="mr-1.5 font-mono font-medium text-foreground">{selected}</span>}
+                  {t.env.sensitive}
+                </span>
                 <div role="radiogroup" aria-label={t.env.view} className="flex shrink-0 rounded-lg border border-border p-0.5">
                   {([["form", t.env.form, <ListTree key="i" className="size-3.5" />], ["raw", t.env.raw, <Code2 key="i" className="size-3.5" />]] as const).map(([value, label, icon]) => (
                     <button

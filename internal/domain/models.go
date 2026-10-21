@@ -128,9 +128,21 @@ type Repository struct {
 	Name string `json:"name"`
 	// Alias is a user-chosen display name that overrides Name; empty means
 	// none. It tells apart several records of the same folder (ADR-0015).
-	Alias           string        `json:"alias"`
-	Path            string        `json:"path"`
-	PackageManager  string        `json:"packageManager"`
+	Alias          string `json:"alias"`
+	Path           string `json:"path"`
+	PackageManager string `json:"packageManager"`
+	// PackageManagerVersion is the version pinned by a packageManager field
+	// ("pnpm@9.12.0" → "9.12.0"); empty when nothing pins it (ADR-0032).
+	PackageManagerVersion string `json:"packageManagerVersion"`
+	// Monorepo describes workspace tooling (Turborepo, Nx, workspaces)
+	// found in the folder or the workspace it belongs to (ADR-0032).
+	Monorepo Monorepo `json:"monorepo"`
+	// NodeRequest is the Node.js version the folder asks for; refreshed on
+	// every inspection (ADR-0031).
+	NodeRequest NodeRequest `json:"nodeRequest"`
+	// NodeVersion is the Node.js version the user chose for this
+	// repository ("22.19.0"); empty means automatic (ADR-0031).
+	NodeVersion     string        `json:"nodeVersion"`
 	Scripts         []Script      `json:"scripts"`
 	CommandSequence []CommandStep `json:"commandSequence"`
 	// QuickCommands are pinned scripts/commands shown as chips under the
@@ -151,6 +163,96 @@ type Repository struct {
 	// Problem describes why the last refresh could not read package.json.
 	// Empty when the repository metadata is healthy.
 	Problem string `json:"problem"`
+}
+
+// Monorepo describes workspace tooling of a repository folder (ADR-0032).
+type Monorepo struct {
+	// Tools are the task runners found: "turbo", "nx", "lerna", "rush".
+	Tools []string `json:"tools"`
+	// Workspaces is true when the folder declares package workspaces
+	// (package.json "workspaces" or pnpm-workspace.yaml).
+	Workspaces bool `json:"workspaces"`
+	// Root is the workspace root when the folder is a member package inside
+	// it; empty when the folder is the root or stands alone.
+	Root string `json:"root"`
+	// Tasks are the runnable tasks of the task runners, in declaration order.
+	Tasks []MonorepoTask `json:"tasks"`
+}
+
+// MonorepoTask is a task-runner task: `turbo run <name>` or
+// `nx run-many -t <name>`.
+type MonorepoTask struct {
+	Tool string `json:"tool"`
+	Name string `json:"name"`
+}
+
+// NodeRequest is what a repository folder says about its Node.js version.
+// Nothing here is executed; the files are only read (ADR-0031).
+type NodeRequest struct {
+	// Spec is the requested version as written: "20", "v20.11.1",
+	// "lts/iron", "node". Empty when no version file asks for one.
+	Spec string `json:"spec"`
+	// Source names the file Spec came from, relative to the repository
+	// (".nvmrc", "../.node-version", "package.json (volta)", …).
+	Source string `json:"source"`
+	// Engines is package.json "engines.node", a semver range; "" when absent.
+	Engines string `json:"engines"`
+}
+
+// NodeInstall is one Node.js version installed on this machine (ADR-0031).
+type NodeInstall struct {
+	// Version is "22.19.0" (no "v").
+	Version string `json:"version"`
+	// Manager is the tool that installed it: nvm, fnm, volta, asdf, mise,
+	// n, nodenv, nvs, homebrew, or system.
+	Manager string `json:"manager"`
+	// BinDir holds the node executable; putting it first on PATH selects
+	// this version.
+	BinDir string `json:"binDir"`
+	// Default marks the node a shell finds when nothing asks for a version.
+	Default bool `json:"default"`
+	// EOL is true when this release line is past its end of life.
+	EOL bool `json:"eol"`
+}
+
+// NodeManager is a Node.js version manager found on this machine.
+type NodeManager struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Root is the folder it keeps versions in.
+	Root     string `json:"root"`
+	Versions int    `json:"versions"`
+}
+
+// NodeStatus is the Node.js version a repository's commands run with.
+type NodeStatus struct {
+	RepositoryID string `json:"repositoryId"`
+	// Version is "" when no Node.js was found at all.
+	Version string `json:"version"`
+	Manager string `json:"manager"`
+	// Source is "selected" (the user's choice), "request" (a version file
+	// or package.json) or "default" (the shell's node).
+	Source string `json:"source"`
+	// Missing is the selected or requested version that is not installed
+	// (the next choice is used instead); empty otherwise.
+	Missing string `json:"missing"`
+	// EnginesMismatch is true when Version does not satisfy engines.node.
+	EnginesMismatch bool `json:"enginesMismatch"`
+	EOL             bool `json:"eol"`
+	// Newer is the newest installed version when its major is higher.
+	Newer string `json:"newer"`
+}
+
+// NodeOverview lists the installed Node.js versions and what every
+// repository runs with.
+type NodeOverview struct {
+	Managers []NodeManager `json:"managers"`
+	// Installs are newest first.
+	Installs []NodeInstall `json:"installs"`
+	// Default is the version of the shell's node; "" when none was found.
+	Default      string       `json:"default"`
+	Repositories []NodeStatus `json:"repositories"`
+	ScannedAt    time.Time    `json:"scannedAt"`
 }
 
 // DisplayName is the alias when set, otherwise the discovered name.
@@ -577,6 +679,49 @@ type JWTDecoded struct {
 	Roles          []string `json:"roles"`
 	Signature      string   `json:"signature"`
 	SignatureError string   `json:"signatureError"`
+}
+
+// AppInfo identifies this RepoDock build (Settings → About, ADR-0034).
+type AppInfo struct {
+	// Version is the release tag the build was made from ("v0.3.0"), or
+	// "dev" for a local build.
+	Version string `json:"version"`
+	// Commit, CommitTime and Modified come from the Go build's VCS stamp.
+	Commit     string `json:"commit"`
+	CommitTime string `json:"commitTime"`
+	Modified   bool   `json:"modified"`
+	Platform   string `json:"platform"`
+	GoVersion  string `json:"goVersion"`
+	// Repository is the project's GitHub page.
+	Repository string `json:"repository"`
+}
+
+// Release is one published RepoDock release on GitHub.
+type Release struct {
+	Tag  string `json:"tag"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	// Notes is the release's Markdown changelog, without the download
+	// table CI appends.
+	Notes       string    `json:"notes"`
+	PublishedAt time.Time `json:"publishedAt"`
+	Prerelease  bool      `json:"prerelease"`
+	// Newer is true when the release is newer than the running version.
+	Newer bool `json:"newer"`
+}
+
+// UpdateCheck compares the running version with the releases on GitHub.
+type UpdateCheck struct {
+	Current string `json:"current"`
+	// Latest is the newest release; its Tag is "" when there is none.
+	Latest          Release `json:"latest"`
+	UpdateAvailable bool    `json:"updateAvailable"`
+	// Comparable is false when the running version is not a release
+	// (a development build), so nothing can be called newer.
+	Comparable bool `json:"comparable"`
+	// Releases are the most recent releases, newest first.
+	Releases  []Release `json:"releases"`
+	CheckedAt time.Time `json:"checkedAt"`
 }
 
 // GraphQLFile is one schema file found by the "GraphQL map" mini app.

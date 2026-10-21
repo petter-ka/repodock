@@ -61,7 +61,7 @@ Exit criteria: a repository can have a repeatable local startup sequence that ca
 
 ## Stage 4 — Environment Workspace
 
-- `.env*` discovery.
+- `.env*` discovery, including sub-folders (ADR-0033).
 - Read/edit/save drawer.
 - File validation and atomic writes.
 - Secret masking UX.
@@ -88,5 +88,7 @@ Potential modules:
 - Local service health dashboard.
 - Build/test history.
 - GraphQL schema map — shipped as a mini app (ADR-0029).
+- Node.js toolchain: per-repository Node.js versions, monorepo package managers and tasks (ADR-0031, ADR-0032) — shipped.
+- About page with an on-demand update check (ADR-0034) — shipped.
 
 Every module should follow `module boundary → service → domain contract → UI feature` and avoid direct access to another module's internals.

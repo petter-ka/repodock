@@ -1,6 +1,7 @@
 import { errorMessage } from "@/lib/bridge"
 import type { ModuleContext } from "@/lib/module"
 import { repositoryApi } from "./api"
+import { nodeStore } from "./store/nodeStore"
 import { processStore } from "./store/processStore"
 import { scheduleStore } from "./store/scheduleStore"
 import { workspaceStore } from "./store/workspaceStore"
@@ -12,7 +13,11 @@ let announced = false
 
 export function connectRepositoryManager({ notify, t, f }: ModuleContext) {
   const offs = [
-    repositoryApi.on("workspace:changed", (workspace) => workspaceStore.setWorkspace(workspace)),
+    repositoryApi.on("workspace:changed", (workspace) => {
+      workspaceStore.setWorkspace(workspace)
+      // Version files and the user's choice live in the workspace.
+      nodeStore.scheduleLoad()
+    }),
     repositoryApi.on("process:started", (run) => processStore.upsertRun(run)),
     repositoryApi.on("process:output-batch", (lines) => processStore.applyOutput(lines)),
     repositoryApi.on("process:stats", (snapshot) => processStore.applyStats(snapshot)),
@@ -41,6 +46,7 @@ export function connectRepositoryManager({ notify, t, f }: ModuleContext) {
       workspaceStore.setWorkspace(workspace)
       scheduleStore.set(statuses)
       processStore.hydrate(runs, snapshots, sequences, groupRuns)
+      void nodeStore.load()
       if (announced) return
       announced = true
       if (report.recoveredBackup) notify(f(t.notices.recovered, { path: report.recoveredBackup }), { tone: "warning", duration: 0 })

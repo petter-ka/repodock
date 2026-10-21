@@ -14,7 +14,7 @@ import { useI18n } from "@/lib/i18n"
 import { modLabel } from "@/lib/keyboard"
 import { readPreference, writePreference } from "@/lib/preferences"
 import { cn, formatTime } from "@/lib/utils"
-import { displayName, type Group, type GroupRepoState, type GroupRunMode, type ImportPreview, type Repository } from "../domain"
+import { displayName, type Group, type GroupRepoState, type GroupRunMode, type ImportPreview, type NodeStatus, type Repository } from "../domain"
 import type { RepositoryActions } from "../hooks/useRepositoryActions"
 import { useProcessVersion, useWorkspaceState } from "../hooks/useStores"
 import { processStore } from "../store/processStore"
@@ -26,6 +26,8 @@ import { GlobalCommandsDialog } from "./GlobalCommandsDialog"
 import { ScheduleDialog } from "./ScheduleDialog"
 import { ScheduleMenuItems } from "./ScheduleNext"
 import { scheduleStore, useScheduleVersion } from "../store/scheduleStore"
+import { nodeMajor, nodeNeedsAttention, nodeStore, useNodeVersion } from "../store/nodeStore"
+import { useNodeNotes, useNodeSource } from "./NodeVersionMenu"
 import { ImportDialog } from "./ImportDialog"
 
 type DialogState =
@@ -62,6 +64,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
   // Groups ticked when the schedule dialog opens; null = closed.
   const [scheduleFor, setScheduleFor] = useState<string[] | null>(null)
   useScheduleVersion()
+  useNodeVersion()
   const [dialog, setDialog] = useState<DialogState>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [globalsOpen, setGlobalsOpen] = useState(false)
@@ -426,6 +429,7 @@ export const RepoSidebar = forwardRef<HTMLInputElement, { actions: RepositoryAct
                       selected={repo.id === selectedRepoId}
                       running={running.get(repo.id) ?? 0}
                       latest={latest.get(repo.id) ?? null}
+                      node={nodeStore.status(repo.id)}
                       groupState={memberState.get(repo.id)}
                       skipped={skipped.has(repo.id)}
                       groupRunning={groupRunning}
@@ -519,7 +523,7 @@ const healthIcon: Record<RepoHealth, React.ReactNode> = {
   danger: <XCircle className="size-4 text-destructive" />,
 }
 
-function RepoItem({ repo, index, groupSize, groups, selected, running, latest, groupState, skipped, groupRunning, actions, onRemove, onRename, dragging, dropEdge, onDragStart, onDragOver, onDragEnd }: {
+function RepoItem({ repo, index, groupSize, groups, selected, running, latest, node, groupState, skipped, groupRunning, actions, onRemove, onRename, dragging, dropEdge, onDragStart, onDragOver, onDragEnd }: {
   repo: Repository
   /** position within its group */
   index: number
@@ -529,6 +533,8 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
   running: number
   /** latest command of this repository and its health */
   latest: ReturnType<typeof latestRunHealth>
+  /** the Node.js version its commands run with */
+  node?: NodeStatus
   /** this repository's state in a running group run */
   groupState?: GroupRepoState
   /** "Run group" leaves this repository out (ADR-0024) */
@@ -546,6 +552,9 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
   onDragEnd: () => void
 }) {
   const { t, f } = useI18n()
+  const nodeSource = useNodeSource(repo, node)
+  const nodeNotes = useNodeNotes(repo, node)
+  const nodeText = node?.version ? `${f(t.node.label, { version: node.version })} — ${nodeSource}` : node ? t.node.none : ""
   const lastRunText = !latest
     ? ""
     : latest.health === "running"
@@ -569,7 +578,7 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
         aria-current={selected ? "page" : undefined}
         onClick={() => workspaceStore.select(repo.id)}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-2 pl-3 pr-9 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        title={[repo.alias && repo.alias !== repo.name ? repo.name : "", repo.path, lastRunText, skipped ? t.skip.skipped : "", repo.continuous ? t.continuous.marker : ""].filter(Boolean).join("\n")}
+        title={[repo.alias && repo.alias !== repo.name ? repo.name : "", repo.path, nodeText, ...nodeNotes.filter((note) => note.tone === "warning").map((note) => note.text), lastRunText, skipped ? t.skip.skipped : "", repo.continuous ? t.continuous.marker : ""].filter(Boolean).join("\n")}
       >
         {latest ? (
           <span className="shrink-0" role="img" aria-label={lastRunText}>{healthIcon[latest.health]}</span>
@@ -588,7 +597,14 @@ function RepoItem({ repo, index, groupSize, groups, selected, running, latest, g
         ) : running > 0 ? (
           <Badge variant="success" className="tabular-nums">{running}</Badge>
         ) : (
-          <span className="text-[0.625rem] uppercase tracking-wide opacity-60">{repo.packageManager || t.sidebar.folder}</span>
+          <span className="flex shrink-0 items-center gap-1 text-[0.625rem] uppercase tracking-wide">
+            <span className="opacity-60">{repo.packageManager || t.sidebar.folder}</span>
+            {node?.version && (
+              <span className={cn("tabular-nums normal-case", nodeNeedsAttention(node) ? "text-warning" : "opacity-60")} aria-label={nodeText}>
+                · v{nodeMajor(node.version)}
+              </span>
+            )}
+          </span>
         )}
       </button>
       <DropdownMenu>

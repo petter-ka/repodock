@@ -19,6 +19,10 @@ The console used a hand-written fixed-row virtualizer, and output was kept per r
   - Upper bound: `(repositories with output + 1) × limit` lines, each ≤ 16 KiB (the backend splits longer lines).
 - The backend is unchanged: it stores no output history, only batches lines (50 ms / 500 lines) to the frontend, and retains 200 finished runs.
 
+## Amendment (2026-10-21): following the tail
+
+Sticking to the bottom only when new output arrived left the newest line(s) hidden whenever the console shrank without new output — the input bar appearing for a running process, or a horizontal scrollbar appearing for a long line. While following, the console now sticks to the bottom after every render and whenever the scroll area or its content changes size (a `ResizeObserver`), and only a scroll *up* by the user stops following; content growing between a programmatic scroll and its scroll event no longer does. "Jump to latest" resumes following.
+
 ## Consequences
 
 - One new dependency (`@tanstack/react-virtual`), headless and small; it fits ADR-0004's stack.

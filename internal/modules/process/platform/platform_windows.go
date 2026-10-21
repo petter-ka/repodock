@@ -19,14 +19,19 @@ import (
 
 // ShellCommand runs command through cmd.exe. The command line is passed raw
 // (`/s /c "<command>"`) because Go's default argument escaping follows the
-// MSVCRT rules, which cmd.exe does not understand.
-func ShellCommand(command, workdir string) *exec.Cmd {
+// MSVCRT rules, which cmd.exe does not understand. pathPrefix folders go
+// first on PATH; /d skips AutoRun, so nothing reorders it (ADR-0031).
+func ShellCommand(command, workdir string, env []string, pathPrefix []string) *exec.Cmd {
 	shell := os.Getenv("ComSpec")
 	if shell == "" || !filepath.IsAbs(shell) {
 		shell = filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe")
 	}
+	if len(pathPrefix) > 0 {
+		env = WithPath(env, strings.Join(pathPrefix, string(os.PathListSeparator)), nil)
+	}
 	cmd := exec.Command(shell)
 	cmd.Dir = workdir
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CmdLine:       `cmd.exe /d /s /c "` + command + `"`,
 		HideWindow:    true,

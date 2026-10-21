@@ -160,6 +160,12 @@ func normalize(state *domain.Workspace) {
 		if repo.Stack == nil {
 			repo.Stack = []string{}
 		}
+		if repo.Monorepo.Tools == nil {
+			repo.Monorepo.Tools = []string{}
+		}
+		if repo.Monorepo.Tasks == nil {
+			repo.Monorepo.Tasks = []domain.MonorepoTask{}
+		}
 		repo.CommandSequence = enabledSteps(repo.CommandSequence)
 		if _, ok := groupIndex[repo.GroupID]; !ok {
 			repo.GroupID = state.Groups[0].ID

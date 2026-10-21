@@ -1,13 +1,17 @@
 // Package environment discovers, reads and writes local dotenv files
-// (ADR-0005). File contents must never be logged.
+// (ADR-0005, ADR-0033). File contents must never be logged.
 package environment
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/example/repodock/internal/domain"
 )
@@ -15,7 +19,18 @@ import (
 // MaxFileSize bounds env files RepoDock will open or write.
 const MaxFileSize = 1 << 20
 
-// Candidates lists supported env file names in display order.
+// Discovery limits keep a scan of a huge repository bounded.
+const (
+	// MaxDepth is how many folders below the repository root are searched.
+	MaxDepth = 5
+	// MaxFiles bounds how many env files one repository lists.
+	MaxFiles = 200
+	// maxEntries bounds the directory entries one scan visits.
+	maxEntries = 50_000
+)
+
+// Candidates are the well-known env file names. Within a folder they are
+// listed first, in this order; other env files follow by name.
 var Candidates = []string{
 	".env",
 	".env.local",
@@ -27,34 +42,145 @@ var Candidates = []string{
 	".env.production.local",
 }
 
-var allowed = func() map[string]bool {
-	m := make(map[string]bool, len(Candidates))
-	for _, name := range Candidates {
-		m[name] = true
+var rank = func() map[string]int {
+	m := make(map[string]int, len(Candidates))
+	for i, name := range Candidates {
+		m[name] = i
 	}
 	return m
 }()
+
+// skipDirs are dependency, build and cache folders. Hidden folders are
+// skipped too, except allowedHidden.
+var skipDirs = map[string]bool{
+	"node_modules": true, "bower_components": true, "jspm_packages": true, "vendor": true,
+	"dist": true, "build": true, "out": true, "coverage": true, "target": true,
+	"venv": true, "__pycache__": true,
+}
+
+var allowedHidden = map[string]bool{".devcontainer": true, ".docker": true}
+
+// skipDir reports whether discovery leaves a folder out.
+func skipDir(name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return !allowedHidden[name]
+	}
+	return skipDirs[name]
+}
+
+// IsEnvFileName reports whether a file name is a dotenv file: ".env",
+// ".env.<anything>" (".env.staging", ".env.example") or "<name>.env"
+// ("docker.env"). Editor swap files and RepoDock's temp files are not.
+func IsEnvFileName(name string) bool {
+	if name == ".env" {
+		return true
+	}
+	if !strings.HasPrefix(name, ".env.") && !(strings.HasSuffix(name, ".env") && len(name) > len(".env")) {
+		return false
+	}
+	if strings.Contains(name, ".repodock-") || strings.HasSuffix(name, "~") {
+		return false
+	}
+	for _, suffix := range []string{".swp", ".swo", ".swx", ".tmp"} {
+		if strings.HasSuffix(name, suffix) {
+			return false
+		}
+	}
+	return true
+}
 
 type Service struct{}
 
 func New() *Service { return &Service{} }
 
-// Names returns the candidate files that exist in repoPath.
+// Names returns the env files under repoPath as slash-separated paths
+// relative to it ("apps/web/.env.local"): the repository root first, then
+// sub-folders in path order. Dependency, build and hidden folders are not
+// searched, nor anything deeper than MaxDepth; at most MaxFiles are listed.
 func (s *Service) Names(repoPath string) []string {
-	out := make([]string, 0, len(Candidates))
-	for _, name := range Candidates {
-		if info, err := os.Stat(filepath.Join(repoPath, name)); err == nil && info.Mode().IsRegular() {
-			out = append(out, name)
+	type hit struct{ dir, name string }
+	var hits []hit
+	errStop := errors.New("limit reached")
+	entries := 0
+	_ = filepath.WalkDir(repoPath, func(p string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			if p == repoPath {
+				return err
+			}
+			if entry != nil && entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
+		if entries++; entries > maxEntries {
+			return errStop
+		}
+		if p == repoPath {
+			return nil
+		}
+		rel, err := filepath.Rel(repoPath, p)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if entry.IsDir() {
+			if skipDir(entry.Name()) || strings.Count(rel, "/")+1 > MaxDepth {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !IsEnvFileName(entry.Name()) || !regularFile(p, entry) {
+			return nil
+		}
+		hits = append(hits, hit{dir: path.Dir(rel), name: entry.Name()})
+		if len(hits) >= MaxFiles {
+			return errStop
+		}
+		return nil
+	})
+	sort.Slice(hits, func(i, j int) bool {
+		a, b := hits[i], hits[j]
+		if a.dir != b.dir {
+			if a.dir == "." || b.dir == "." {
+				return a.dir == "."
+			}
+			return a.dir < b.dir
+		}
+		ra, okA := rank[a.name]
+		rb, okB := rank[b.name]
+		switch {
+		case okA && okB:
+			return ra < rb
+		case okA != okB:
+			return okA
+		}
+		return a.name < b.name
+	})
+	out := make([]string, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, path.Join(h.dir, h.name))
 	}
 	return out
 }
 
-// List returns metadata (without content) for existing candidate files.
+// regularFile accepts regular files and symlinks to them.
+func regularFile(p string, entry fs.DirEntry) bool {
+	if entry.Type().IsRegular() {
+		return true
+	}
+	if entry.Type()&fs.ModeSymlink == 0 {
+		return false
+	}
+	info, err := os.Stat(p)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// List returns metadata (without content) for the discovered env files.
 func (s *Service) List(repoPath string) []domain.EnvFile {
-	out := make([]domain.EnvFile, 0, len(Candidates))
-	for _, name := range s.Names(repoPath) {
-		path := filepath.Join(repoPath, name)
+	names := s.Names(repoPath)
+	out := make([]domain.EnvFile, 0, len(names))
+	for _, name := range names {
+		path := filepath.Join(repoPath, filepath.FromSlash(name))
 		info, err := os.Stat(path)
 		if err != nil {
 			continue
@@ -144,14 +270,51 @@ func (s *Service) Save(repoPath, name, content string) error {
 	return nil
 }
 
-// resolve validates name against the allow-list, which also rules out path
-// separators and traversal.
-func resolve(repoPath, name string) (string, error) {
-	if !allowed[name] {
-		return "", fmt.Errorf("unsupported env file: %q", name)
+// ValidName reports whether name is a path discovery could have produced:
+// relative, clean, slash-separated, an env file name, not deeper than
+// MaxDepth and not inside a skipped (or "..") folder.
+func ValidName(name string) bool {
+	if name == "" || strings.ContainsAny(name, "\\\x00") || path.Clean(name) != name || path.IsAbs(name) {
+		return false
 	}
+	if !filepath.IsLocal(filepath.FromSlash(name)) {
+		return false
+	}
+	parts := strings.Split(name, "/")
+	if len(parts)-1 > MaxDepth {
+		return false
+	}
+	for _, dir := range parts[:len(parts)-1] {
+		if skipDir(dir) {
+			return false
+		}
+	}
+	return IsEnvFileName(parts[len(parts)-1])
+}
+
+// resolve validates name and returns its absolute path. A file in a
+// sub-folder must stay inside the repository even when a folder on the way
+// is a symlink.
+func resolve(repoPath, name string) (string, error) {
 	if repoPath == "" {
 		return "", fmt.Errorf("repository path is empty")
 	}
-	return filepath.Join(repoPath, name), nil
+	if !ValidName(name) {
+		return "", fmt.Errorf("unsupported env file: %q", name)
+	}
+	full := filepath.Join(repoPath, filepath.FromSlash(name))
+	if strings.Contains(name, "/") {
+		root, err := filepath.EvalSymlinks(repoPath)
+		if err != nil {
+			return "", fmt.Errorf("resolve repository folder: %w", err)
+		}
+		dir, err := filepath.EvalSymlinks(filepath.Dir(full))
+		if err != nil {
+			return "", fmt.Errorf("%s no longer exists; refresh the repository", name)
+		}
+		if rel, err := filepath.Rel(root, dir); err != nil || !filepath.IsLocal(rel) {
+			return "", fmt.Errorf("%s is outside the repository", name)
+		}
+	}
+	return full, nil
 }

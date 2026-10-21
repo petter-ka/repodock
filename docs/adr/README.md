@@ -53,3 +53,7 @@ Use the following template for new architectural decisions:
 | 0028 | Continuous repositories in group runs; parallel by default | Accepted |
 | 0029 | "GraphQL map" mini app; resizable mini app windows | Accepted |
 | 0030 | Text size and spacing settings (S/M/L/XL) | Accepted |
+| 0031 | Node.js version per repository; nvm/fnm in commands | Accepted |
+| 0032 | Package managers in monorepos, Corepack, Turborepo and Nx tasks | Accepted |
+| 0033 | Every kind of env file, in sub-folders too | Accepted |
+| 0034 | About page with the version and an update check | Accepted |

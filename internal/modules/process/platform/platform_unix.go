@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -15,18 +14,18 @@ import (
 )
 
 // ShellCommand runs command through the user's login shell so PATH entries
-// from shell profiles (nvm, volta, Homebrew) are visible to GUI launches.
-// The child becomes the leader of a new process group.
-func ShellCommand(command, workdir string) *exec.Cmd {
-	shell := os.Getenv("SHELL")
-	if shell == "" || !filepath.IsAbs(shell) {
-		shell = "/bin/sh"
+// from shell profiles (Homebrew, …) are visible to GUI launches. The child
+// gets env, with pathPrefix folders first on PATH; a prelude keeps them
+// first after the profile ran and sets up nvm/fnm when the command calls
+// them (ADR-0031). The child becomes the leader of a new process group.
+func ShellCommand(command, workdir string, env []string, pathPrefix []string) *exec.Cmd {
+	shell := userShell()
+	if len(pathPrefix) > 0 {
+		env = WithPath(env, strings.Join(pathPrefix, string(os.PathListSeparator)), nil)
 	}
-	if _, err := os.Stat(shell); err != nil {
-		shell = "/bin/sh"
-	}
-	cmd := exec.Command(shell, "-l", "-c", command)
+	cmd := exec.Command(shell, "-l", "-c", prelude(shell, command, pathPrefix, managerSetup)+command)
 	cmd.Dir = workdir
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
 }

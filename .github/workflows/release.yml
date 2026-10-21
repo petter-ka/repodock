@@ -83,9 +83,12 @@ jobs:
             fs.writeFileSync("wails.json", JSON.stringify(config, null, 2) + "\n")
           ' "${{ steps.version.outputs.numeric }}"
 
+      # The tag becomes the version shown in Settings → About (ADR-0034).
       - name: Build
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          flags=(-clean -platform "${{ matrix.platform }}" -trimpath -ldflags "-s -w")
+          flags=(-clean -platform "${{ matrix.platform }}" -trimpath -ldflags "-s -w -X github.com/example/repodock/internal/app.Version=${TAG}")
           if [ "$RUNNER_OS" = "Windows" ]; then flags+=(-nsis); fi
           wails build "${flags[@]}"
           ls -la build/bin

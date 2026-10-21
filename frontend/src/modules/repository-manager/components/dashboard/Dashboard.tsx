@@ -1,5 +1,5 @@
 import {
-  Infinity as InfinityIcon, AlarmClock, AlertTriangle, Boxes, CheckCircle2, Clock, Columns3, FileCode2, FolderGit2, Layers, ListOrdered, Loader2, Play, SkipForward, Square,
+  Infinity as InfinityIcon, AlarmClock, AlertTriangle, Boxes, CheckCircle2, Clock, Columns3, FileCode2, FolderGit2, Layers, ListOrdered, Loader2, Play, RefreshCw, SkipForward, Square,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import { computeDashboard, managerColor, READINESS_ORDER, runningSpans, type GroupStats, type Readiness } from "../../dashboard"
+import { computeDashboard, managerColor, nodeSummary, READINESS_ORDER, runningSpans, type GroupStats, type Readiness } from "../../dashboard"
 import { displayName, type Workspace } from "../../domain"
 import type { RepositoryActions } from "../../hooks/useRepositoryActions"
 import { useProcessVersion } from "../../hooks/useStores"
@@ -17,6 +17,7 @@ import { workspaceStore } from "../../store/workspaceStore"
 import { ScheduleDialog } from "../ScheduleDialog"
 import { NextEventChip, upcomingEvents } from "../ScheduleNext"
 import { useScheduleStatus } from "../../store/scheduleStore"
+import { nodeStore, useNodeVersion } from "../../store/nodeStore"
 import { BarList, ChartCard, Donut, Legend, StackedBars, StatTile, swatch, type LegendItem } from "./charts"
 
 /**
@@ -100,7 +101,8 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
           <WeekChart className="xl:col-span-3" groups={data.groups} onSchedule={(groupIds) => setScheduleFor(groupIds ?? allGroupIds)} />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+          <NodeCard workspace={workspace} actions={actions} />
           <ChartCard
             title={t.dashboard.managers}
             table={{ columns: [t.dashboard.managers, t.dashboard.repositories], rows: data.managers.map((m) => [managerLabel(m.key), m.count]) }}
@@ -183,6 +185,55 @@ export function Dashboard({ workspace, actions }: { workspace: Workspace; action
       </div>
       <ScheduleDialog groupIds={scheduleFor} actions={actions} onOpenChange={(open) => { if (!open) setScheduleFor(null) }} />
     </div>
+  )
+}
+
+/** Repositories per Node.js release line, and the ones whose version needs a look (ADR-0031). */
+function NodeCard({ workspace, actions }: { workspace: Workspace; actions: RepositoryActions }) {
+  const { t, f } = useI18n()
+  const version = useNodeVersion()
+  const { lines, attention } = useMemo(() => {
+    void version
+    const statuses = new Map(nodeStore.get().repositories.map((status) => [status.repositoryId, status]))
+    return nodeSummary(workspace.repositories, statuses)
+  }, [version, workspace.repositories])
+  const lineLabel = (major: number, eol: boolean) => (major ? `${f(t.node.line, { major })}${eol ? ` · ${t.node.eolTag}` : ""}` : t.node.none)
+  const reason = (status: (typeof attention)[number]["status"]) =>
+    !status.version ? t.node.none : status.missing ? f(t.node.wants, { spec: status.missing }) : status.enginesMismatch ? t.node.enginesShort : t.node.eolShort
+
+  return (
+    <ChartCard
+      title={t.node.dashboardTitle}
+      hint={nodeStore.get().default ? f(t.node.dashboardHint, { version: nodeStore.get().default, count: nodeStore.get().installs.length }) : t.node.noInstalls}
+      action={(
+        <Tooltip label={t.node.rescan}>
+          <Button size="icon-sm" variant="ghost" aria-label={t.node.rescan} className="text-muted-foreground" onClick={() => void actions.rescanNodeVersions()}><RefreshCw /></Button>
+        </Tooltip>
+      )}
+      table={{ columns: [t.node.dashboardTitle, t.dashboard.repositories], rows: lines.map((line) => [`${lineLabel(line.major, line.eol)} (${line.versions.join(", ")})`, line.count]) }}
+    >
+      {!nodeStore.loaded ? (
+        <p className="text-xs text-muted-foreground">{t.node.loading}</p>
+      ) : (
+        <>
+          <BarList items={lines.map((line) => ({ key: String(line.major), label: lineLabel(line.major, line.eol), value: line.count, warning: line.eol, muted: !line.major }))} />
+          {attention.length > 0 && (
+            <ul className="mt-4 grid gap-1">
+              {attention.slice(0, 5).map(({ repo, status }) => (
+                <li key={repo.id}>
+                  <button onClick={() => workspaceStore.select(repo.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+                    <AlertTriangle className="size-3 shrink-0 text-warning" />
+                    <span className="min-w-0 flex-1 truncate font-medium">{displayName(repo)}</span>
+                    <span className="shrink-0 text-muted-foreground">{status.version && <span className="tabular-nums">{status.version} · </span>}{reason(status)}</span>
+                  </button>
+                </li>
+              ))}
+              {attention.length > 5 && <li className="px-2 text-[0.6875rem] text-muted-foreground">{f(t.node.moreAttention, { count: attention.length - 5 })}</li>}
+            </ul>
+          )}
+        </>
+      )}
+    </ChartCard>
   )
 }
 

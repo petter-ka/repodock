@@ -88,19 +88,47 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
   // A new text size changes every row's height.
   useEffect(() => { virtualizer.measure() }, [lineHeight, virtualizer])
 
-  // Stick to the bottom while following; otherwise compensate for lines
-  // evicted from the top so the visible text does not move.
+  // Following is mirrored in a ref for observers and scroll handlers.
+  const followRef = useRef(follow)
+  followRef.current = follow
+  // The last scroll position seen, to tell a user scrolling up from the
+  // view growing under a programmatic scroll.
+  const lastTopRef = useRef(0)
+  const stick = () => {
+    const node = scrollRef.current
+    if (!node || !followRef.current) return
+    node.scrollTop = node.scrollHeight
+    lastTopRef.current = node.scrollTop
+  }
+
+  // While following, every render sticks to the bottom: new lines, rows the
+  // virtualizer renders after a scroll, a wider row showing the horizontal
+  // scrollbar. Otherwise compensate for lines evicted from the top so the
+  // visible text does not move.
   useLayoutEffect(() => {
     const node = scrollRef.current
     const evicted = lines.evicted
     const previous = evictedRef.current
     evictedRef.current = evicted
     if (!node) return
-    if (follow) node.scrollTop = node.scrollHeight
+    if (followRef.current) stick()
     else if (evicted !== undefined && previous !== undefined && evicted > previous) {
       node.scrollTop = Math.max(0, node.scrollTop - (evicted - previous) * lineHeight)
+      lastTopRef.current = node.scrollTop
     }
-  }, [lines, stamp, follow])
+  })
+
+  // The view shrinks without new output, e.g. when the input bar or the
+  // horizontal scrollbar appears; the last line must stay visible.
+  const hasLines = lines.length > 0
+  useEffect(() => {
+    const node = scrollRef.current
+    if (!node || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => stick())
+    observer.observe(node)
+    if (node.firstElementChild) observer.observe(node.firstElementChild)
+    return () => observer.disconnect()
+  }, [hasLines])
 
   // Reset follow when switching scope.
   useEffect(() => {
@@ -108,17 +136,26 @@ export function ConsoleView({ repositoryId, runs, repoNames, selectedRunId, onSe
     evictedRef.current = undefined
   }, [repositoryId, selectedRunId, query])
 
+  // Only the user scrolling up stops following; content growing between a
+  // programmatic scroll and its scroll event does not.
   const onScroll = () => {
     const node = scrollRef.current
     if (!node) return
-    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < lineHeight * 1.5
-    if (atBottom !== follow) setFollow(atBottom)
+    const top = node.scrollTop
+    const atBottom = node.scrollHeight - top - node.clientHeight < lineHeight * 1.5
+    const scrolledUp = top < lastTopRef.current - 1
+    lastTopRef.current = top
+    if (atBottom) {
+      if (!follow) setFollow(true)
+    } else if (scrolledUp && follow) {
+      setFollow(false)
+    }
   }
 
   const jump = () => {
+    followRef.current = true
     setFollow(true)
-    const node = scrollRef.current
-    if (node) node.scrollTop = node.scrollHeight
+    stick()
   }
 
   const copy = () => {

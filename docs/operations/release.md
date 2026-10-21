@@ -20,7 +20,7 @@ To try the pipeline without a release, run the workflow manually (**Actions → 
 
 ## Versioning
 
-The release tag is the version. `vMAJOR.MINOR.PATCH[-suffix]` is recommended. CI writes the numeric part (`1.2.3` from `v1.2.3-beta.1`) into `wails.json` → `info.productVersion`, which becomes the Windows file/product version and the macOS bundle version. The committed `productVersion` is only used for local builds.
+The release tag is the version. `vMAJOR.MINOR.PATCH[-suffix]` is recommended. The Build step stamps the tag into the binary (`-X github.com/example/repodock/internal/app.Version=<tag>`); Settings → About shows it and compares it with the GitHub releases (ADR-0034), so keep tags semver-like. Local builds report `dev`. The About changelog shows each release's notes up to the `<!-- repodock-downloads -->` marker. CI writes the numeric part (`1.2.3` from `v1.2.3-beta.1`) into `wails.json` → `info.productVersion`, which becomes the Windows file/product version and the macOS bundle version. The committed `productVersion` is only used for local builds.
 
 ## Release artifacts
 

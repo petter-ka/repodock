@@ -88,3 +88,88 @@ func TestReadRejectsOversizedFiles(t *testing.T) {
 		t.Fatal("oversized file must be rejected")
 	}
 }
+
+func write(t *testing.T, root, rel, content string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNamesFindsEveryKindInSubfolders(t *testing.T) {
+	dir := t.TempDir()
+	for _, rel := range []string{
+		".env.staging", ".env", ".env.example", "docker.env", ".env.local",
+		"apps/web/.env.local", "apps/web/.env", "apps/api/.env.test", "packages/db/prisma/.env",
+		".devcontainer/devcontainer.env",
+		// Not env files, or in folders that are skipped.
+		".envrc", "env", ".env.local.swp", ".env~", "README.env.md",
+		"node_modules/pkg/.env", ".git/.env", ".turbo/.env", "dist/.env", "apps/web/.next/.env",
+		"a/b/c/d/e/f/.env",
+	} {
+		write(t, dir, rel, "A=1\n")
+	}
+	got := New().Names(dir)
+	want := []string{
+		".env", ".env.local", ".env.example", ".env.staging", "docker.env",
+		".devcontainer/devcontainer.env", "apps/api/.env.test", "apps/web/.env", "apps/web/.env.local", "packages/db/prisma/.env",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("names = %v\nwant    %v", got, want)
+	}
+}
+
+func TestSubfolderFilesRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "apps/web/.env.local", "A=1\n")
+	svc := New()
+	if err := svc.Save(dir, "apps/web/.env.local", "A=2\n"); err != nil {
+		t.Fatal(err)
+	}
+	file, err := svc.Read(dir, "apps/web/.env.local")
+	if err != nil || file.Content != "A=2\n" || file.Name != "apps/web/.env.local" {
+		t.Fatalf("file = %+v, %v", file, err)
+	}
+	if list := svc.List(dir); len(list) != 1 || list[0].Name != "apps/web/.env.local" || list[0].Content != "" {
+		t.Fatalf("list = %+v", list)
+	}
+}
+
+func TestRejectsPathsDiscoveryWouldNotProduce(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "node_modules/x/.env", "A=1\n")
+	write(t, dir, "apps/web/notes.txt", "x")
+	svc := New()
+	for _, name := range []string{
+		"node_modules/x/.env", "/etc/.env", "apps//web/.env", "./.env", "apps/web/", "apps/web/notes.txt",
+		`apps\web\.env`, "a/b/c/d/e/f/.env", ".git/.env",
+	} {
+		if _, err := svc.Read(dir, name); err == nil {
+			t.Errorf("read %q should fail", name)
+		}
+	}
+}
+
+func TestSymlinkedFolderCannotLeaveTheRepository(t *testing.T) {
+	outside := t.TempDir()
+	write(t, outside, ".env", "SECRET=1\n")
+	dir := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "linked")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	svc := New()
+	// Discovery does not follow the link, and a hand-made name is refused.
+	if names := svc.Names(dir); len(names) != 0 {
+		t.Fatalf("names = %v", names)
+	}
+	if _, err := svc.Read(dir, "linked/.env"); err == nil {
+		t.Fatal("reading through a symlinked folder outside the repository must fail")
+	}
+	if err := svc.Save(dir, "linked/.env", "X=1\n"); err == nil {
+		t.Fatal("writing through a symlinked folder outside the repository must fail")
+	}
+}

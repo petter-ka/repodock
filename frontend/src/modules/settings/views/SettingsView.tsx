@@ -8,6 +8,7 @@ import { useTheme, type ThemeMode } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 import { appearance, DEFAULT_SIZE, SIZES, useAppearance, type Size } from "@/state/appearance"
 import { CONSOLE_LIMITS, consoleLimit, useConsoleLimit, type ConsoleLimit } from "@/state/consoleLimit"
+import { AboutCard } from "../components/AboutCard"
 
 const themeIcons: Record<ThemeMode, React.ReactNode> = {
   system: <Monitor className="size-4" />,
@@ -139,6 +140,7 @@ export function SettingsView() {
               <code className="mt-3 block break-all rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs">{workspacePath}</code>
             </Card>
           )}
+          <AboutCard />
         </div>
       </div>
     </main>

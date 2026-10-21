@@ -25,7 +25,11 @@ Workspace
     ├── name                  # package.json "name", else folder name (refreshed)
     ├── alias                 # user display name; "" = none — see ADR-0015
     ├── path                  # absolute; NOT unique — several records may share a folder
-    ├── packageManager        # npm | pnpm | yarn | bun; "" = plain folder (no package.json)
+    ├── packageManager        # npm | pnpm | yarn | bun; "" = plain folder (no package.json); found in a workspace root above too — ADR-0032
+    ├── packageManagerVersion # pinned by packageManager ("9.12.0"); "" = not pinned
+    ├── monorepo              # { tools[] (turbo|nx|lerna|rush), workspaces, root (workspace root of a member), tasks[] { tool, name } } — ADR-0032
+    ├── nodeRequest           # { spec, source, engines }: what .nvmrc/.node-version/.tool-versions/mise.toml/volta/engines ask for — ADR-0031
+    ├── nodeVersion           # the user's chosen Node.js version; "" = automatic (machine-specific, not exported)
     ├── scripts[]             # { name, command } in package.json declaration order
     ├── quickCommands[]       # pinned chips { id, label, script | globalCommand | command } — ADR-0017
     ├── continuous            # sequence ends in a long-running process (dev server) — ADR-0028
@@ -36,7 +40,7 @@ Workspace
     │   ├── command           # shell text (used when script and globalCommand are empty)
     │   ├── enabled
     │   └── background        # start and continue without waiting
-    ├── envFiles[]            # discovered allow-listed .env* names
+    ├── envFiles[]            # discovered env files, slash-separated paths relative to the folder — ADR-0033
     ├── dependencies, devDependencies # package.json entry counts (dashboard) — ADR-0027
     ├── stack[]               # detected frameworks/tools, e.g. "Next.js", "Vite"
     ├── groupId
@@ -88,7 +92,7 @@ ExportDocument
                                 # step globalCommand references globalCommands[].id
 ```
 
-Excluded on purpose: internal IDs, scripts, package manager, env file names and contents, refresh timestamps, problems.
+Excluded on purpose: internal IDs, scripts, package manager, monorepo and Node.js facts, the chosen Node.js version (it depends on what is installed on a machine), env file names and contents, refresh timestamps, problems.
 
 Represented: group order, name, run mode and collapsed state; repository order within each group; several records of one folder (each entry separately, with its alias); nested and plain folders; every sequence step with its kind, label, enabled and background flags, and the global commands it references. On import, new groups keep the file's order relative to groups that already exist (each follows its predecessor in the file); existing groups and repositories are never modified, and folders registered before the import are skipped.
 

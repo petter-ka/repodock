@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
 import type { Group, Repository, Workspace } from "./domain"
-import { computeDashboard, runningSpans, seriesColor } from "./dashboard"
+import { computeDashboard, nodeSummary, runningSpans, seriesColor } from "./dashboard"
 
 const repo = (id: string, patch: Partial<Repository> = {}): Repository => ({
   id, name: id, alias: "", path: `/w/${id}`, packageManager: "npm", scripts: [{ name: "dev", command: "x" }], commandSequence: [],
-  quickCommands: [], envFiles: [], groupId: "", lastRefreshedAt: "", problem: "", dependencies: 2, devDependencies: 1, stack: [], continuous: false, ...patch,
+  quickCommands: [], envFiles: [], groupId: "", lastRefreshedAt: "", problem: "", dependencies: 2, devDependencies: 1, stack: [], continuous: false,
+  packageManagerVersion: "", nodeVersion: "", nodeRequest: { spec: "", source: "", engines: "" }, monorepo: { tools: [], workspaces: false, root: "", tasks: [] }, ...patch,
 })
 const group = (id: string, ids: string[], patch: Partial<Group> = {}): Group => ({
   id, name: id, repositoryIds: ids, collapsed: false, runMode: "sequential", skippedRepositoryIds: [], schedule: null, ...patch,
@@ -65,5 +66,25 @@ describe("runningSpans", () => {
     expect(runningSpans({ ...base, startAt: "22:00", stopAt: "02:00" })).toEqual([[1320, 1440], [0, 120]])
     expect(runningSpans({ ...base, stopEnabled: false })).toEqual([[540, 1440]])
     expect(runningSpans({ ...base, startEnabled: false, stopEnabled: false })).toEqual([])
+  })
+})
+
+describe("nodeSummary", () => {
+  it("groups repositories by release line and lists the ones needing a look", () => {
+    const status = (repositoryId: string, version: string, patch = {}) => ({
+      repositoryId, version, manager: "nvm", source: "default" as const, missing: "", enginesMismatch: false, eol: false, newer: "", ...patch,
+    })
+    const repos = [repo("a"), repo("b"), repo("c"), repo("d"), repo("e")]
+    const statuses = new Map([
+      ["a", status("a", "22.19.0")],
+      ["b", status("b", "22.1.0")],
+      ["c", status("c", "18.20.8", { eol: true })],
+      ["d", status("d", "22.19.0", { missing: "16" })],
+      ["e", status("e", "")],
+    ])
+    const { lines, attention } = nodeSummary(repos, statuses)
+    expect(lines.map((l) => [l.major, l.count, l.eol])).toEqual([[22, 3, false], [18, 1, true], [0, 1, false]])
+    expect(lines[0].versions).toEqual(["22.19.0", "22.1.0"])
+    expect(attention.map((a) => a.repo.id)).toEqual(["c", "d", "e"])
   })
 })

@@ -30,7 +30,7 @@ A repository can launch a process tree that consumes significant CPU/RAM. Expose
 
 ## Security baseline
 
-- No external network requests in the MVP core.
+- No external network requests in the core. The one exception is **Settings → About → Check for updates**: on that click only, one GET to the GitHub releases API, sending nothing but a `RepoDock/<version>` User-Agent (ADR-0034). Release notes are rendered as text, never as HTML; links open in the system browser and only `https` links are accepted.
 - No automatic uploading of environment files.
 - No command execution without an explicit user action.
 - Sanitize UI rendering of logs; render text, never interpret HTML.

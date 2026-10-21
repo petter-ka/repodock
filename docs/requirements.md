@@ -31,7 +31,7 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-08 | Stop a running process | P0 |
 | FR-08a | Restart a process with its previous command | P0 |
 | FR-09 | Show PID, memory and basic CPU stats | P1 |
-| FR-10 | Detect and edit common `.env*` files | P1 |
+| FR-10 | Detect and edit `.env`, `.env.*` and `*.env` files in the repository and its sub-folders | P1 |
 | FR-11 | Configure ordered command sequences | P1 |
 | FR-12 | Support empty/no-op command entries in a sequence | P1 |
 | FR-13 | Switch English/Hungarian | P1 |
@@ -55,6 +55,10 @@ Needs enough observability to diagnose runaway local dev processes.
 | FR-31 | Mark repositories as continuous (dev servers) so group runs do not wait for them; parallel group runs by default | P1 |
 | FR-32 | GraphQL map mini app: draw the merged `.graphql` schema files of chosen repositories/folders (all or checked files only) as an explorable graph with searchable docs and a tree view of a type's fields (down) or its users (up); stays smooth on enterprise-size schemas | P2 |
 | FR-33 | Choose the interface text size and spacing (S/M/L/XL each, default M) in Settings | P2 |
+| FR-34 | Show the Node.js version every repository runs with (from version files, else the shell default), flag end-of-life, missing and `engines` mismatches, and let the user pick any installed version (nvm, fnm, Volta, asdf, mise, n, nodenv, nvs, Homebrew) per repository | P1 |
+| FR-35 | Custom commands can call `nvm` and `fnm` | P1 |
+| FR-36 | Detect pnpm/Yarn/Bun in monorepo members; fall back to Corepack; run Turborepo tasks and Nx targets | P1 |
+| FR-37 | Settings → About shows the running version and, on request, the latest GitHub release and changelog | P2 |
 
 ## Non-functional requirements
 

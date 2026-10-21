@@ -1,6 +1,6 @@
 // Workspace-wide figures for the "All repositories" dashboard. Pure, so the
 // numbers are testable apart from the charts that draw them.
-import type { Group, GroupSchedule, Repository, Workspace } from "./domain"
+import type { Group, GroupSchedule, NodeStatus, Repository, Workspace } from "./domain"
 import { isScheduleActive, scheduleOf } from "./schedule"
 
 /** Categorical slots in fixed order; a 9th group and beyond share "other". */
@@ -96,4 +96,26 @@ export function runningSpans(schedule: GroupSchedule): Array<[number, number]> {
   if (start === null && stop === null) return []
   if (start !== null && stop !== null && stop < start) return [[start, 1440], [0, stop]]
   return [[start ?? 0, stop ?? 1440]]
+}
+
+export type NodeLine = { major: number; count: number; eol: boolean; versions: string[] }
+
+/**
+ * Repositories per Node.js release line (newest first; major 0 = no Node.js
+ * found) and the repositories whose version needs a look.
+ */
+export function nodeSummary(repositories: Repository[], statuses: Map<string, NodeStatus>) {
+  const lines = new Map<number, NodeLine>()
+  const attention: Array<{ repo: Repository; status: NodeStatus }> = []
+  for (const repo of repositories) {
+    const status = statuses.get(repo.id)
+    if (!status) continue
+    const major = Number(status.version.split(".")[0]) || 0
+    const line = lines.get(major) ?? { major, count: 0, eol: status.eol, versions: [] }
+    line.count++
+    if (status.version && !line.versions.includes(status.version)) line.versions.push(status.version)
+    lines.set(major, line)
+    if (status.eol || status.missing || status.enginesMismatch || !status.version) attention.push({ repo, status })
+  }
+  return { lines: [...lines.values()].sort((a, b) => b.major - a.major), attention }
 }

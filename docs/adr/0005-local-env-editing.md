@@ -9,7 +9,7 @@ Developers need to inspect and edit repo env files, but accidental secret disclo
 
 ## Decision
 
-RepoDock discovers common `.env*` files but only reads and writes their content through explicit user interaction. It does not upload or log these values.
+RepoDock discovers `.env*` files (in sub-folders too since ADR-0033) but only reads and writes their content through explicit user interaction. It does not upload or log these values.
 
 ## Consequences
 

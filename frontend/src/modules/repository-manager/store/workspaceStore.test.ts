@@ -13,6 +13,7 @@ describe("refreshWorkspaceAfterMutation", () => {
       repositories: [{
         id: "repo", name: "Repo", alias: "", path: "/repo", packageManager: "npm", scripts: [], commandSequence: [],
         quickCommands: [], envFiles: [], groupId: source ? "source" : "target", lastRefreshedAt: "", problem: "", dependencies: 0, devDependencies: 0, stack: [], continuous: false,
+        packageManagerVersion: "", nodeVersion: "", nodeRequest: { spec: "", source: "", engines: "" }, monorepo: { tools: [], workspaces: false, root: "", tasks: [] },
       }],
       globalCommands: [],
     })

@@ -29,7 +29,8 @@ Build a polished, native, local-first desktop command center for many local Node
 ## Repository rules
 
 - `package.json` is parsed, never executed, during discovery.
-- Supported package-manager detection is `packageManager`, then lockfile hints, then npm.
+- Supported package-manager detection is `packageManager`, then lockfile hints, then the same in the workspace folders above (up to the Git root), then npm (ADR-0032).
+- Version files (`.nvmrc`, `.node-version`, `.tool-versions`, mise, Volta) are read, never executed; every run gets the repository's resolved Node.js bin folder first on PATH (ADR-0031).
 - Scripts are displayed exactly as they appear in `package.json`.
 - A repository may have zero scripts.
 - The same folder may be registered several times, and parent/child folders of a registered one may be added; extra records of one folder get a numbered alias (ADR-0015).
@@ -38,7 +39,7 @@ Build a polished, native, local-first desktop command center for many local Node
 
 ## Environment rules
 
-- `.env`, `.env.local`, `.env.development`, `.env.development.local`, `.env.test`, `.env.test.local`, `.env.production`, `.env.production.local` are candidates.
+- `.env`, `.env.*` and `*.env` files are candidates, in the repository folder and its sub-folders (bounded walk that skips dependency, build and hidden folders; ADR-0033). The well-known names (`.env`, `.env.local`, `.env.development[.local]`, `.env.test[.local]`, `.env.production[.local]`) are listed first.
 - Preserve file text when saving rather than serializing it into a new format.
 - Do not print environment contents to logs.
 - Consider secrets sensitive even though the app is local.

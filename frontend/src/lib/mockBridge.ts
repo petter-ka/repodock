@@ -3,13 +3,19 @@
 // sequences; it never touches the real filesystem.
 import type { Backend } from "./bridge"
 import type {
-  AppBinding, CommandStep, HostProcess, JwtSettings, QuickCommand, GlobalCommand, GroupRun, GroupSchedule, GroupScheduleStatus, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, ScheduledStop, SequenceRun, Workspace,
+  AppBinding, NodeInstall, NodeOverview, NodeStatus, Release, CommandStep, HostProcess, JwtSettings, QuickCommand, GlobalCommand, GroupRun, GroupSchedule, GroupScheduleStatus, ImportPreview, EnvFile, EventMap, Group, ProcessOutput, ProcessSnapshot, Repository, Run, ScheduledStop, SequenceRun, Workspace,
 } from "./contracts"
 import { displayName } from "./contracts"
 
 const ZERO = "0001-01-01T00:00:00Z"
 const now = () => new Date().toISOString()
 const uid = () => crypto.randomUUID()
+
+/** Discovery fields of a folder where nothing special was found. */
+const noDiscovery = (): Pick<Repository, "packageManagerVersion" | "monorepo" | "nodeRequest" | "nodeVersion"> => ({
+  packageManagerVersion: "", nodeVersion: "", nodeRequest: { spec: "", source: "", engines: "" },
+  monorepo: { tools: [], workspaces: false, root: "", tasks: [] },
+})
 
 const scheduleOf = (group: Group): GroupSchedule => group.schedule ?? noSchedule()
 const noSchedule = (): GroupSchedule => ({ days: [], startEnabled: false, startAt: "", stopEnabled: false, stopAt: "" })
@@ -18,6 +24,7 @@ const scheduleActive = (s: GroupSchedule | null | undefined): s is GroupSchedule
 
 function seedWorkspace(): Workspace {
   const repo = (id: string, name: string, pm: string, groupId: string, scripts: [string, string][], envFiles: string[], stack: string[] = [], deps = 0, devDeps = 0): Repository => ({
+    ...noDiscovery(),
     id, name, alias: "", quickCommands: [], path: `C:/work/${name}`, packageManager: pm, groupId, envFiles, lastRefreshedAt: now(), problem: "",
     dependencies: deps, devDependencies: devDeps, stack, continuous: false,
     scripts: scripts.map(([n, command]) => ({ name: n, command })),
@@ -38,18 +45,24 @@ function seedWorkspace(): Workspace {
       { id: "g-libs", name: "Libraries", repositoryIds: ["r-ui", "r-ops"], collapsed: false, runMode: "sequential", skippedRepositoryIds: [], schedule: noSchedule() },
     ],
     repositories: [
-      repo("r-web", "dashboard-web", "pnpm", "g-frontend", [["dev", "next dev --turbo"], ["build", "next build"], ["lint", "next lint"], ["test", "vitest run"]], [".env", ".env.local"], ["Next.js", "TypeScript"], 38, 24),
-      repo("r-docs", "docs-site", "npm", "g-frontend", [["dev", "astro dev"], ["build", "astro build"]], [], ["Astro"], 9, 4),
+      {
+        ...repo("r-web", "dashboard-web", "pnpm", "g-frontend", [["dev", "turbo dev"], ["build", "turbo build"], ["lint", "next lint"], ["test", "vitest run"]], [".env", ".env.local", ".env.example", "apps/admin/.env", "apps/admin/.env.local", "apps/web/.env.local", "packages/db/.env"], ["Next.js", "Turborepo", "TypeScript"], 38, 24),
+        packageManagerVersion: "9.12.0",
+        nodeRequest: { spec: "20", source: ".nvmrc", engines: ">=20" },
+        monorepo: { tools: ["turbo"], workspaces: true, root: "", tasks: [{ tool: "turbo", name: "build" }, { tool: "turbo", name: "dev" }, { tool: "turbo", name: "lint" }, { tool: "turbo", name: "web#test" }] },
+      },
+      { ...repo("r-docs", "docs-site", "npm", "g-frontend", [["dev", "astro dev"], ["build", "astro build"]], [], ["Astro"], 9, 4), nodeRequest: { spec: "22.19.0", source: "package.json (volta)", engines: "" } },
       repo("r-marketing", "marketing-site", "npm", "g-frontend", [["dev", "vite"], ["build", "vite build"], ["preview", "vite preview"]], [".env"], ["Vue", "Vite"], 12, 9),
       {
         ...repo("r-api", "identity-api", "yarn", "g-services", [["start:dev", "nest start --watch"], ["test", "jest"], ["migrate", "prisma migrate deploy"]], [".env", ".env.test"], ["NestJS", "Express", "TypeScript"], 27, 31),
         continuous: true,
+        nodeRequest: { spec: "lts/hydrogen", source: ".nvmrc", engines: "^18" },
         commandSequence: [
           { id: "r-api-s0", label: "migrate", script: "migrate", globalCommand: "", command: "", enabled: true, background: false },
           { id: "r-api-s1", label: "start:dev", script: "start:dev", globalCommand: "", command: "", enabled: true, background: false },
         ],
       },
-      repo("r-billing", "billing-worker", "pnpm", "g-services", [["dev", "tsx watch src/main.ts"], ["test", "vitest"]], [".env"], ["Fastify", "TypeScript"], 14, 11),
+      { ...repo("r-billing", "billing-worker", "pnpm", "g-services", [["dev", "tsx watch src/main.ts"], ["test", "vitest"]], [".env", "docker/postgres.env"], ["Fastify", "TypeScript"], 14, 11), nodeRequest: { spec: "16", source: ".tool-versions", engines: "" } },
       repo("r-ui", "shared-ui", "pnpm", "g-libs", [["dev", "storybook dev"], ["build", "tsup"], ["test", "vitest"]], [], ["React", "Vite", "TypeScript"], 6, 42),
       { ...repo("r-ops", "ops-scripts", "", "g-libs", [], []), commandSequence: [] },
     ],
@@ -274,7 +287,79 @@ export function createMockBackend(): Backend {
     return structuredClone(state)
   }
 
+  // Simulated Node.js installs; resolution mirrors nodeversion.resolve.
+  let installs: NodeInstall[] = [
+    { version: "22.19.0", manager: "nvm", binDir: "~/.nvm/versions/node/v22.19.0/bin", default: true, eol: false },
+    { version: "21.7.1", manager: "nvm", binDir: "~/.nvm/versions/node/v21.7.1/bin", default: false, eol: true },
+    { version: "20.11.1", manager: "nvm", binDir: "~/.nvm/versions/node/v20.11.1/bin", default: false, eol: true },
+    { version: "20.11.1", manager: "fnm", binDir: "~/.local/share/fnm/node-versions/v20.11.1/installation/bin", default: false, eol: true },
+    { version: "18.20.8", manager: "nvm", binDir: "~/.nvm/versions/node/v18.20.8/bin", default: false, eol: true },
+  ]
+  const major = (version: string) => Number(version.replace(/^v/, "").split(".")[0])
+  const lts: Record<string, number> = { hydrogen: 18, iron: 20, jod: 22 }
+  const nodeStatus = (repo: Repository): NodeStatus => {
+    const status: NodeStatus = { repositoryId: repo.id, version: "", manager: "", source: "default", missing: "", enginesMismatch: false, eol: false, newer: "" }
+    let chosen: NodeInstall | undefined
+    if (repo.nodeVersion) {
+      chosen = installs.find((i) => i.version === repo.nodeVersion)
+      if (chosen) status.source = "selected"
+      else status.missing = repo.nodeVersion
+    }
+    const spec = repo.nodeRequest.spec.replace(/^v/, "")
+    if (!chosen && spec) {
+      const want = spec.startsWith("lts/") ? lts[spec.slice(4)] : undefined
+      chosen = installs.find((i) => (want ? major(i.version) === want : i.version === spec || i.version.startsWith(`${spec}.`)))
+      if (chosen) status.source = "request"
+      else status.missing ||= repo.nodeRequest.spec
+    }
+    chosen ??= installs.find((i) => i.default)
+    if (!chosen) return status
+    const engines = repo.nodeRequest.engines.match(/\d+/)
+    return {
+      ...status, version: chosen.version, manager: chosen.manager, eol: chosen.eol,
+      enginesMismatch: !!engines && (repo.nodeRequest.engines.startsWith("^") ? major(chosen.version) !== Number(engines[0]) : major(chosen.version) < Number(engines[0])),
+      newer: major(installs[0].version) > major(chosen.version) ? installs[0].version : "",
+    }
+  }
+  const nodeOverview = (): NodeOverview => ({
+    managers: [{ id: "nvm", name: "nvm", root: "~/.nvm", versions: 4 }, { id: "fnm", name: "fnm", root: "~/.local/share/fnm", versions: 1 }],
+    installs: structuredClone(installs), default: installs.find((i) => i.default)?.version ?? "",
+    repositories: workspace.repositories.map(nodeStatus), scannedAt: now(),
+  })
+  const release = (tag: string, days: number, notes: string, prerelease = false): Release => ({
+    tag, name: tag, url: `https://github.com/petter-ka/repodock/releases/tag/${tag}`, notes, prerelease, newer: true,
+    publishedAt: new Date(Date.now() - days * 86_400_000).toISOString(),
+  })
+
   const api: AppBinding = {
+    async NodeVersions() { return nodeOverview() },
+    async RescanNodeVersions() { installs = [...installs]; return nodeOverview() },
+    async SetRepositoryNodeVersion(repoID, version) {
+      const clean = version.replace(/^v/, "")
+      if (clean && !installs.some((i) => i.version === clean)) throw `Node.js ${clean} is not installed`
+      findRepo(repoID).nodeVersion = clean
+      changed()
+    },
+    async RunTask(repoID, tool, task, label) {
+      const repo = findRepo(repoID)
+      const exec = { pnpm: "pnpm exec", yarn: "yarn", bun: "bun x" }[repo.packageManager] ?? "npm exec --"
+      return start(repoID, `${exec} ${tool === "nx" ? `nx run-many -t ${task}` : `turbo run ${task}`}`, label)
+    },
+    async AppInfo() {
+      return { version: "v0.3.0", commit: "362c430f1b2a", commitTime: now(), modified: false, platform: "browser/mock", goVersion: "go1.27", repository: "https://github.com/petter-ka/repodock" }
+    },
+    async CheckForUpdates() {
+      await new Promise((resolve) => window.setTimeout(resolve, 600))
+      const releases = [
+        release("v0.4.0", 2, "## What's new\n\n- **Node.js versions** per repository: detected from `.nvmrc`, `.node-version`, `.tool-versions` and Volta, with a picker.\n- Turborepo and Nx tasks as chips.\n- `.env` files in sub-folders.\n\n## Fixes\n\n- `nvm` works in custom commands ([#12](https://github.com/petter-ka/repodock/issues/12)).\n- The console stays at the latest line."),
+        { ...release("v0.3.0", 20, "## What's new\n\n- GraphQL map mini app\n- Text size and spacing settings"), newer: false },
+      ]
+      return { current: "v0.3.0", latest: releases[0], updateAvailable: true, comparable: true, releases, checkedAt: now() }
+    },
+    async OpenExternalURL(url) {
+      if (!url.startsWith("https://")) throw `only https links can be opened: ${url}`
+      window.open(url, "_blank", "noopener")
+    },
     async StartupReport() { return { workspacePath: "(browser mock)", recoveredBackup: "", warnings: [] } },
     async Workspace() { return snapshot() },
     async OpenRepositoryInVSCode() {},
@@ -289,6 +374,7 @@ export function createMockBackend(): Backend {
         for (let n = 2; !alias; n++) if (!taken.has(`${name} (${n})`.toLowerCase())) alias = `${name} (${n})`
       }
       const repo: Repository = {
+        ...noDiscovery(),
         id: uid(), name, alias, path, packageManager: "npm", groupId: group.id, envFiles: [], quickCommands: [], lastRefreshedAt: now(), problem: "",
         dependencies: 3, devDependencies: 2, stack: ["Express"], continuous: false,
         scripts: [{ name: "dev", command: "node server.js" }, { name: "test", command: "node --test" }],
@@ -442,6 +528,7 @@ export function createMockBackend(): Backend {
           const repo = override ? { ...entryRepo, path: override } : entryRepo
           if (before.has(repo.path.toLowerCase())) { result.repositoriesSkipped++; continue }
           const record: Repository = {
+            ...noDiscovery(),
             id: uid(), name: repo.name, alias: repo.alias?.trim() ?? "", path: repo.path, packageManager: repo.plainFolder ? "" : "npm", groupId: group.id, envFiles: [], lastRefreshedAt: now(),
             dependencies: 0, devDependencies: 0, stack: [], continuous: !!repo.continuous,
             problem: folderExists(repo.path) ? "" : `folder not found: ${repo.path}`, scripts: (repo.commandSequence ?? []).filter((s) => s.script).map((s) => ({ name: s.script, command: "(simulated)" })),

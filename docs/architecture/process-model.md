@@ -17,10 +17,12 @@ Running ─────────► Stopping
 
 ## Command resolution
 
-1. If the user selected a package script, resolve the local package manager.
-2. Build the argument vector `[pm, "run", script]`; the platform layer quotes it for the shell (ADR-0008). Script names are never concatenated into shell text by callers.
-3. If a custom command was entered, preserve it as single-line shell text.
-4. Execute with the repository folder as the working directory.
+1. If the user selected a package script, resolve the local package manager (from the folder, else its workspace root — ADR-0032).
+2. Build the argument vector `[pm, "run", script]`; the platform layer quotes it for the shell (ADR-0008). Script names are never concatenated into shell text by callers. pnpm/Yarn that are not installed run through `corepack` when it is.
+3. A Turborepo/Nx task becomes `[pm-runner…, "turbo", "run", task]` or `[…, "nx", "run-many", "-t", task]` the same way.
+4. If a custom command was entered, preserve it as single-line shell text.
+5. Resolve the repository's Node.js version (ADR-0031) and put its bin folder first on PATH (`Spec.PathPrefix`).
+6. Execute with the repository folder as the working directory.
 5. Construct a clean process environment from the host environment plus any selected repository env-file values in future stages. MVP only discovers/edits env files; it does not auto-inject them unless explicitly configured.
 
 ## Shell abstraction
@@ -44,6 +46,19 @@ Apps launched from Finder, the Dock or a desktop launcher do not inherit a termi
 At startup the process module resolves the PATH of the user's **interactive login shell** once, in the background (`$SHELL -i -l -c`, stdin closed, 8 s timeout, PATH extracted between markers so profile banners are ignored). Every child process gets `PATH = <shell PATH> + <inherited PATH> + <existing well-known tool folders>` (Homebrew, MacPorts, volta, bun, pnpm, asdf, mise, nodenv, newest nvm version), de-duplicated. If resolution fails or times out, the fallback folders still apply and a warning is logged. Windows GUI apps already inherit the user PATH, so this is a no-op there.
 
 The PATH is resolved once per app launch: after installing a new Node version manager, restart RepoDock.
+
+### Node.js version and the shell prelude (ADR-0031)
+
+The repository's Node.js bin folder is put first on PATH in the environment. Because login profiles (and macOS `path_helper`) can reorder PATH, the Unix shell also gets a short prelude written by RepoDock before the user's command:
+
+```sh
+export NVM_DIR='…'; . '…/nvm.sh' --no-use;   # only when the command calls nvm
+export PATH='<node bin>':"$PATH";             # the repository's Node.js version
+eval "$('…/fnm' env --shell zsh)";            # only when the command calls fnm
+<the user's command, unchanged>
+```
+
+nvm is a shell function defined in `~/.zshrc`, which `zsh -l -c` does not read; without the prelude `nvm use 18` fails with `zsh:1: command not found: nvm`. fish gets the equivalent fish syntax; other shells and Windows get the PATH through the environment only.
 
 ## Output
 

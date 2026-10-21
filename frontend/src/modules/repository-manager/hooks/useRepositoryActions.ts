@@ -4,6 +4,7 @@ import { useI18n } from "@/lib/i18n"
 import { useNotifications } from "@/state/notifications"
 import { repositoryApi } from "../api"
 import { displayName, type CommandStep, type GlobalCommand, type GroupRunMode, type Group, type GroupSchedule, type ScheduleKind, type QuickCommand, type ImportOptions, type ImportPreview, type Repository, type Run } from "../domain"
+import { nodeStore } from "../store/nodeStore"
 import { processStore } from "../store/processStore"
 import { refreshWorkspaceAfterMutation, workspaceStore } from "../store/workspaceStore"
 
@@ -145,6 +146,23 @@ export function useRepositoryActions() {
         return result
       },
       runScript: async (repo: Repository, script: string) => trackRun(await guard(() => repositoryApi.runScript(repo.id, script))),
+      /** Runs a Turborepo/Nx task through the repository's package manager. */
+      runTask: async (repo: Repository, tool: string, task: string) => trackRun(await guard(() => repositoryApi.runTask(repo.id, tool, task))),
+      /** Chooses the Node.js version for a repository ("" = automatic); true when saved. */
+      async setNodeVersion(repo: Repository, version: string) {
+        const ok = await guard(async () => { await repositoryApi.setRepositoryNodeVersion(repo.id, version); return true })
+        if (!ok) return false
+        await nodeStore.load()
+        const status = nodeStore.status(repo.id)
+        notify(f(version ? t.node.chosen : t.node.automaticSet, { name: displayName(repo), version: status?.version || version }), { tone: "success" })
+        return true
+      },
+      /** Looks for installed Node.js versions again. */
+      async rescanNodeVersions() {
+        await nodeStore.load(true)
+        if (nodeStore.error) notify(nodeStore.error, { tone: "error" })
+        else notify(f(t.node.rescanned, { count: nodeStore.get().installs.length }), { tone: "success" })
+      },
       runCommand: async (repo: Repository, command: string, label = "") => trackRun(await guard(() => repositoryApi.runCommand(repo.id, command, label))),
       stop: (runId: string) => guard(() => repositoryApi.stopProcess(runId)),
       /** Sends one line to a running process's stdin; true when delivered. */

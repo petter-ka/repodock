@@ -21,11 +21,13 @@ import (
 	envmod "github.com/example/repodock/internal/modules/environment"
 	hostmod "github.com/example/repodock/internal/modules/hostprocess"
 	jwtmod "github.com/example/repodock/internal/modules/jwttool"
+	nodemod "github.com/example/repodock/internal/modules/nodeversion"
 	processmod "github.com/example/repodock/internal/modules/process"
 	"github.com/example/repodock/internal/modules/process/guard"
 	repomod "github.com/example/repodock/internal/modules/repository"
 	schedulemod "github.com/example/repodock/internal/modules/schedule"
 	seqmod "github.com/example/repodock/internal/modules/sequence"
+	updatesmod "github.com/example/repodock/internal/modules/updates"
 	workspacemod "github.com/example/repodock/internal/modules/workspace"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -40,11 +42,13 @@ type App struct {
 	workspace *workspacemod.Service
 	repo      *repomod.Service
 	env       *envmod.Service
+	node      *nodemod.Service
 	process   *processmod.Manager
 	sequence  *seqmod.Runner
 	host      *hostmod.Service
 	jwt       *jwtmod.Service
 	schedule  *schedulemod.Scheduler
+	updates   *updatesmod.Checker
 	// guard kills leftover process groups after a crash (ADR-0019); nil in tests.
 	guard *guard.Guard
 
@@ -97,9 +101,11 @@ func NewWith(ws *workspacemod.Service, opts processmod.Options) *App {
 		workspace: ws,
 		repo:      repomod.New(),
 		env:       envmod.New(),
+		node:      nodemod.New(nodemod.DefaultOptions(processmod.SearchPath, processmod.LookPath)),
 		process:   processmod.New(opts),
 		host:      hostmod.New(3 * time.Second),
 		jwt:       jwtmod.New(filepath.Join(filepath.Dir(ws.Path()), "jwt-tool.json")),
+		updates:   updatesmod.New(Version),
 	}
 	a.sequence = seqmod.New(stepExecutor{a})
 	a.schedule = schedulemod.New(scheduleHost{a}, time.Now)
@@ -179,6 +185,8 @@ func (a *App) boot() {
 			slog.Error("save workspace after startup refresh", "error", err)
 		}
 	}()
+	// The first scan may wait for the shell PATH; do it before anyone asks.
+	go a.node.Warm()
 }
 
 func (a *App) shutdown(_ context.Context) {
@@ -270,8 +278,10 @@ func (a *App) RefreshRepository(id string) (domain.Repository, error) {
 	return repo, a.persist()
 }
 
-// RefreshAll re-reads metadata for every repository.
+// RefreshAll re-reads metadata for every repository and looks for
+// installed Node.js versions again.
 func (a *App) RefreshAll() error {
+	a.node.Rescan()
 	a.refreshAll()
 	return a.persist()
 }
@@ -401,10 +411,9 @@ func (a *App) RunScript(repoID string, scriptName string, label string) (domain.
 	if !repomod.HasScript(repo, scriptName) {
 		return domain.Run{}, fmt.Errorf("script not found: %s", scriptName)
 	}
-	return a.process.Start(processmod.Spec{
-		RepositoryID: repo.ID, Workdir: repo.Path, Label: label,
-		Argv: repomod.ScriptArgv(repo.PackageManager, scriptName),
-	})
+	spec := a.runSpec(repo, label)
+	spec.Argv = viaCorepack(repomod.ScriptArgv(repo.PackageManager, scriptName), spec.PathPrefix)
+	return a.process.Start(spec)
 }
 
 // RunCommand runs user-entered shell text in the repository folder. An empty
@@ -414,7 +423,9 @@ func (a *App) RunCommand(repoID string, command string, label string) (domain.Ru
 	if err != nil {
 		return domain.Run{}, err
 	}
-	return a.process.Start(processmod.Spec{RepositoryID: repo.ID, Workdir: repo.Path, Label: label, Command: command})
+	spec := a.runSpec(repo, label)
+	spec.Command = command
+	return a.process.Start(spec)
 }
 
 func (a *App) WaitForRun(runID string) (domain.Run, error) { return a.process.Wait(runID) }
@@ -438,7 +449,13 @@ func (a *App) RestartProcess(runID string) (domain.Run, error) {
 	if _, err := a.repository(run.RepositoryID); err != nil {
 		return domain.Run{}, err
 	}
-	return a.process.Restart(runID)
+	// A Node.js version chosen since the run started applies to the restart.
+	return a.process.RestartWith(runID, func(spec processmod.Spec) processmod.Spec {
+		if repo, ok := a.workspace.Repository(spec.RepositoryID); ok {
+			spec.PathPrefix = a.runSpec(repo, "").PathPrefix
+		}
+		return spec
+	})
 }
 
 // StopRepository cancels the repository's sequence and stops all its runs.
@@ -596,6 +613,9 @@ func applyMetadata(repo *domain.Repository, meta repomod.Metadata) {
 	repo.Name = meta.Name
 	repo.Path = meta.Path
 	repo.PackageManager = meta.PackageManager
+	repo.PackageManagerVersion = meta.PackageManagerVersion
+	repo.Monorepo = meta.Monorepo
+	repo.NodeRequest = meta.NodeRequest
 	repo.Scripts = meta.Scripts
 	repo.Dependencies = meta.Dependencies
 	repo.DevDependencies = meta.DevDependencies
@@ -621,19 +641,17 @@ func (a *App) persist() error {
 type stepExecutor struct{ a *App }
 
 func (e stepExecutor) StartStep(repo domain.Repository, step domain.CommandStep, sequenceID string) (domain.Run, error) {
-	spec := processmod.Spec{
-		RepositoryID: repo.ID, Workdir: repo.Path, Label: step.Label,
-		SequenceID: sequenceID, StepID: step.ID,
+	current, err := e.a.repository(repo.ID)
+	if err != nil {
+		return domain.Run{}, err
 	}
+	spec := e.a.runSpec(current, step.Label)
+	spec.SequenceID, spec.StepID = sequenceID, step.ID
 	if step.Script != "" {
-		current, err := e.a.repository(repo.ID)
-		if err != nil {
-			return domain.Run{}, err
-		}
 		if !repomod.HasScript(current, step.Script) {
 			return domain.Run{}, fmt.Errorf("script %q is no longer defined in package.json", step.Script)
 		}
-		spec.Argv = repomod.ScriptArgv(current.PackageManager, step.Script)
+		spec.Argv = viaCorepack(repomod.ScriptArgv(current.PackageManager, step.Script), spec.PathPrefix)
 	} else if step.GlobalCommand != "" {
 		// Resolved at run time so edits to the global command apply to
 		// every sequence that uses it.

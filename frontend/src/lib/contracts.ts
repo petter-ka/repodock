@@ -106,6 +106,14 @@ export type Repository = {
   path: string
   /** "" for a plain folder without package.json */
   packageManager: string
+  /** pinned by a packageManager field ("9.12.0"); "" when not pinned — ADR-0032 */
+  packageManagerVersion: string
+  /** workspace tooling of the folder or the monorepo it belongs to — ADR-0032 */
+  monorepo: Monorepo
+  /** the Node.js version the folder asks for — ADR-0031 */
+  nodeRequest: NodeRequest
+  /** the user's chosen Node.js version; "" = automatic — ADR-0031 */
+  nodeVersion: string
   scripts: Script[]
   /** null when the record never had a sequence */
   commandSequence: CommandStep[] | null
@@ -122,6 +130,98 @@ export type Repository = {
   /** well-known frameworks and tools found among the dependencies */
   stack: string[] | null
   problem: string
+}
+
+export type MonorepoTool = "turbo" | "nx" | "lerna" | "rush"
+/** A task-runner task: `turbo run <name>` or `nx run-many -t <name>`. */
+export type MonorepoTask = { tool: "turbo" | "nx"; name: string }
+export type Monorepo = {
+  tools: MonorepoTool[] | null
+  /** declares package workspaces (package.json "workspaces", pnpm-workspace.yaml) */
+  workspaces: boolean
+  /** the workspace root when this folder is a member package; "" otherwise */
+  root: string
+  tasks: MonorepoTask[] | null
+}
+
+/** What a folder says about its Node.js version; nothing is executed. */
+export type NodeRequest = {
+  /** as written: "20", "v20.11.1", "lts/iron"; "" = no version file */
+  spec: string
+  /** the file it came from, relative to the repository (".nvmrc", "../.tool-versions", "package.json (volta)") */
+  source: string
+  /** package.json engines.node; "" when absent */
+  engines: string
+}
+
+/** A Node.js version installed on this machine. */
+export type NodeInstall = {
+  version: string
+  /** nvm, fnm, volta, asdf, mise, n, nodenv, nvs, nvm-windows, homebrew or system */
+  manager: string
+  binDir: string
+  /** the node a shell finds when nothing asks for a version */
+  default: boolean
+  eol: boolean
+}
+export type NodeManager = { id: string; name: string; root: string; versions: number }
+export type NodeSource = "selected" | "request" | "default"
+/** The Node.js version a repository's commands run with. */
+export type NodeStatus = {
+  repositoryId: string
+  /** "" when no Node.js was found */
+  version: string
+  manager: string
+  source: NodeSource
+  /** the selected or requested version that is not installed; "" otherwise */
+  missing: string
+  enginesMismatch: boolean
+  eol: boolean
+  /** the newest installed version, when its major is higher */
+  newer: string
+}
+export type NodeOverview = {
+  managers: NodeManager[]
+  /** newest first */
+  installs: NodeInstall[]
+  /** version of the shell's node; "" when none */
+  default: string
+  repositories: NodeStatus[]
+  scannedAt: string
+}
+
+/** This RepoDock build (Settings → About, ADR-0034). */
+export type AppInfo = {
+  /** release tag ("v0.3.0") or "dev" */
+  version: string
+  commit: string
+  commitTime: string
+  modified: boolean
+  platform: string
+  goVersion: string
+  repository: string
+}
+export type Release = {
+  tag: string
+  name: string
+  url: string
+  /** Markdown changelog without the download table */
+  notes: string
+  publishedAt: string
+  prerelease: boolean
+  /** newer than the running version */
+  newer: boolean
+}
+export type UpdateCheck = {
+  current: string
+  /** tag "" when the repository has no release */
+  latest: Release
+  updateAvailable: boolean
+  /** false for development builds, which cannot be compared */
+  comparable: boolean
+  /** newest first */
+  releases: Release[] | null
+  checkedAt: string
 }
 
 export type GroupRunMode = "sequential" | "parallel"
@@ -357,6 +457,16 @@ export type AppBinding = {
   RunSequence(repoID: string): Promise<SequenceRun>
   CancelSequence(sequenceID: string): Promise<void>
   Sequences(): Promise<SequenceRun[]>
+  NodeVersions(): Promise<NodeOverview>
+  RescanNodeVersions(): Promise<NodeOverview>
+  /** "" returns to automatic; the version must be installed */
+  SetRepositoryNodeVersion(repoID: string, version: string): Promise<void>
+  RunTask(repoID: string, tool: string, task: string, label: string): Promise<Run>
+  AppInfo(): Promise<AppInfo>
+  /** the only network request: GitHub releases, on request */
+  CheckForUpdates(): Promise<UpdateCheck>
+  /** https links only, opened in the default browser */
+  OpenExternalURL(url: string): Promise<void>
   EnvironmentFiles(repoID: string): Promise<EnvFile[]>
   ReadEnvironmentFile(repoID: string, name: string): Promise<EnvFile>
   SaveEnvironmentFile(repoID: string, name: string, content: string): Promise<void>

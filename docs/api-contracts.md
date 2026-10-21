@@ -19,13 +19,18 @@ Lifecycle hooks are package-level (`app.Hooks`) so they are not bound to the fro
 - `SetRepositorySkipped(repoID, skipped)` — "Run group" leaves the repository out (ADR-0024); stored in its current group's `skippedRepositoryIds`.
 - `SetGroupSchedules(groupIDs, schedule)` → `Group[]` — validates `{ days, startEnabled, startAt, stopEnabled, stopAt }` and gives every listed group its own copy (ADR-0025); other groups keep theirs. At least one existing group is required. Forgets postponed and cancelled starts/stops of those groups.
 - `TakeLaunchFolders()` → `FolderCheck[]` — folders handed to RepoDock on its command line, by a second launch or a macOS "open" event, waiting for the user; returns and forgets them (ADR-0026).
+- `NodeVersions()` → `NodeOverview { managers[], installs[] (newest first: { version, manager, binDir, default, eol }), default, repositories[] (NodeStatus), scannedAt }`; `NodeStatus` = `{ repositoryId, version ("" = none found), manager, source (selected|request|default), missing, enginesMismatch, eol, newer }` (ADR-0031). `RescanNodeVersions()` scans the version managers' folders again and returns the same. `SetRepositoryNodeVersion(repoID, version)` — an exact installed version, or `""` for automatic; persisted, emits `workspace:changed`.
+- `AppInfo()` → `{ version (release tag or "dev"), commit, commitTime, modified, platform, goVersion, repository }`; `CheckForUpdates()` → `UpdateCheck { current, latest (Release), updateAvailable, comparable, releases[] (newest first: { tag, name, url, notes, publishedAt, prerelease, newer }), checkedAt }` — the only network request (GitHub releases API), made only when called (ADR-0034); `OpenExternalURL(url)` opens an `https` link in the default browser.
 - `CreateGroup(name)`, `RenameGroup(id, name)`, `DeleteGroup(id)` (members move to the first remaining group; the last group cannot be deleted), `SetGroupCollapsed(id, collapsed)`, `AssignRepository(id, groupID)` (appends), `FindProcessByPID(pid)`, `FindProcessesByPort(port)` → `HostProcess { pid, ppid, name, command, user, startedAt, ports, runId, repositoryId, protected }`; `KillHostProcess(pid, includeChildren)` → `{ pid, signalled, forced, runId }` (SIGTERM, SIGKILL after 3 s; refuses PID ≤ 1, RepoDock and its ancestors; a RepoDock run's PID stops that run — ADR-0018). `JWTSettings()` / `SaveJWTSettings(settings)` → `JWTSettings { algorithm, id, email, expiresInDays, issuer, subject, realm, channel, deviceId, roles, selectedRoles, extraClaims, privateKey, publicKey, secret }` (normalized; stored in `jwt-tool.json`, 0600), `GenerateJWT(settings)` → `{ token, payload, expiresAt }`, `DecodeJWT(token, settings)` → `{ header, payload, algorithm, issuedAt, expiresAt, expired, roles, signature: valid|invalid|unverified, signatureError }` (ADR-0020). `SaveQuickCommands(repoID, commands)` (pinned chips `{ id, label, script, globalCommand, command }`; returns the normalized list — ADR-0017), `RenameRepository(id, alias)` (display name; trimmed, single line, ≤ 200 chars; blank clears), `MoveGroup(id, index)` (sidebar order; index excludes the group; negative appends), `MoveRepository(id, groupID, index)` (inserts at `index` among the target group's other members; negative or out-of-range appends; same group reorders — ADR-0014).
 - `SaveCommandSequence(repoID, steps)` — persists ordered steps; blank labels and missing IDs are filled in. Each step keeps one kind: `script`, else `globalCommand`, else `command`.
 - `SaveGlobalCommands(commands)` — replaces the workspace's global commands (`{ id, name, command }`, ADR-0012) and returns the normalized list. Rejects empty or duplicate names, empty or multi-line commands. Steps referencing a removed command fail when run.
 
 ## Process
 
-- `RunScript(repoID, scriptName, label)` — runs a declared script as `[pm, "run", name]` argv (ADR-0008).
+- `RunScript(repoID, scriptName, label)` — runs a declared script as `[pm, "run", name]` argv (ADR-0008); `corepack` is put in front when pnpm/Yarn is missing but Corepack is not (ADR-0032).
+- `RunTask(repoID, tool, task, label)` — runs a discovered Turborepo task or Nx target (`repository.monorepo.tasks`) through the package manager's runner, e.g. `pnpm exec turbo run build` (ADR-0032).
+
+Every run of a repository gets its Node.js version's bin folder first on PATH, and commands that call `nvm` or `fnm` get their shell setup (ADR-0031).
 - `RunCommand(repoID, command, label)` — runs single-line shell text in the repository folder. Empty text is a `skipped` no-op run.
 - `WaitForRun(runID)`, `StopProcess(runID)` (tree termination, ADR-0007), `RestartProcess(runID)` (same spec, new run ID).
 - `SendInput(runID, text, secret)` — writes one line (`text` + newline) to a running process's stdin to answer a prompt (ADR-0013). Single line, ≤ 4 KiB; rejected when the run is not running, input was closed, or the process does not read within 3 s. The line is echoed as a `stdin` output line, masked when `secret`.
@@ -67,9 +72,11 @@ A spawn failure (e.g. missing working directory) returns a `failed` run with an 
 
 ## Environment
 
+Names are slash-separated paths relative to the repository (`apps/web/.env.local`), as discovered: `.env`, `.env.*` and `*.env` files in the folder and its sub-folders, skipping dependency, build and hidden folders (ADR-0033).
+
 - `EnvironmentFiles(repoID)` — metadata only (name, path, size, modifiedAt); never content.
-- `ReadEnvironmentFile(repoID, name)` — content of an allow-listed file (≤ 1 MiB).
-- `SaveEnvironmentFile(repoID, name, content)` — atomic overwrite of an existing allow-listed file; text is written exactly as given.
+- `ReadEnvironmentFile(repoID, name)` — content of a discoverable file (≤ 1 MiB); the path must stay inside the repository.
+- `SaveEnvironmentFile(repoID, name, content)` — atomic overwrite of an existing discoverable file; text is written exactly as given.
 
 ## Events
 
